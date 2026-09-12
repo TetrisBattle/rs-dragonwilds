@@ -1,3 +1,5 @@
+import { Box } from '@mui/material'
+
 export const App = () => {
-	return <div>Hello world</div>
+	return <Box sx={{ p: 2 }}>Hello world</Box>
 }
