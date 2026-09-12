@@ -1,10 +1,6 @@
-# electron
+# Electron
 
 An Electron application with React and TypeScript
-
-## Recommended IDE Setup
-
-- [VSCode](https://code.visualstudio.com/) + [Biome](https://marketplace.visualstudio.com/items?itemName=biomejs.biome)
 
 ## Project Setup
 
