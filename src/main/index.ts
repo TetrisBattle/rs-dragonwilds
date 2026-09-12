@@ -1,16 +1,16 @@
 import { join } from 'node:path'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
-import icon from '../../resources/icon.png?asset'
+import icon from '../../build/icon256.ico?asset'
 
 function createWindow(): void {
 	// Create the browser window.
 	const mainWindow = new BrowserWindow({
-		width: 900,
-		height: 670,
+		width: 800,
+		height: 600,
 		show: false,
 		autoHideMenuBar: true,
-		...(process.platform === 'linux' ? { icon } : {}),
+		icon,
 		webPreferences: {
 			preload: join(__dirname, '../preload/index.js'),
 			sandbox: false,

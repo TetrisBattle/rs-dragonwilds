@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">TN logo</title>
+  <desc id="desc">Bold white T and N monogram in a rounded black square with a white border</desc>
+
+  <style>
+    :root {
+      --color-primary: #fff;
+      --color-background: #000;
+      --mark-width: 20;
+      --separator-width: 36;
+    }
+  </style>
+
+  <rect x="8" y="8" width="240" height="240" rx="44" fill="var(--color-primary)"/>
+  <rect x="18" y="18" width="220" height="220" rx="34" fill="var(--color-background)"/>
+
+  <g transform="translate(128 128) scale(1.25 1.32) translate(-128 -128)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- N forms the base of the monogram. -->
+    <path d="M74 184V112L182 184V112" stroke="var(--color-primary)" stroke-width="var(--mark-width)"/>
+
+    <!-- A dark outline separates the foreground T from the N. -->
+    <path d="M68 78H188M128 78V184" stroke="var(--color-background)" stroke-width="var(--separator-width)"/>
+    <path d="M68 78H188M128 78V184" stroke="var(--color-primary)" stroke-width="var(--mark-width)"/>
+  </g>
+</svg>
