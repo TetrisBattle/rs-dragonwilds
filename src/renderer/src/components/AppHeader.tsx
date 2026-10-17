@@ -1,8 +1,15 @@
-import { Box, Button, Stack, Typography } from '@mui/material'
-import type { SaveSummary } from '../../../shared/save'
+import RefreshIcon from '@mui/icons-material/Refresh'
+import SaveIcon from '@mui/icons-material/Save'
+import {
+	Box,
+	CircularProgress,
+	IconButton,
+	Stack,
+	Tooltip,
+	Typography,
+} from '@mui/material'
 
 interface AppHeaderProps {
-	selectedSave?: SaveSummary
 	loadingSaves: boolean
 	saving: boolean
 	dirty: boolean
@@ -12,7 +19,6 @@ interface AppHeaderProps {
 }
 
 export function AppHeader({
-	selectedSave,
 	loadingSaves,
 	saving,
 	dirty,
@@ -35,54 +41,57 @@ export function AppHeader({
 			})}
 		>
 			<Box>
-				<Typography
-					sx={(theme) => ({
-						color: theme.palette.text.secondary,
-						fontSize: 10,
-						letterSpacing: 1.4,
-					})}
-				>
-					SAVE WORKSHOP / PERSONAL CHEST
-				</Typography>
-				<Typography sx={{ mt: 0.4, fontWeight: 650, fontSize: 14 }}>
-					{selectedSave?.characterName ?? 'Choose a character'}
+				<Typography sx={{ fontWeight: 650, fontSize: 20 }}>
+					Personal Chest
 				</Typography>
 			</Box>
 			<Stack direction='row' spacing={1.2} sx={{ alignItems: 'center' }}>
-				<Button
-					variant='outlined'
-					onClick={onRefresh}
-					disabled={loadingSaves || saving}
-					sx={(theme) => ({
-						color: theme.palette.text.secondary,
-						borderColor: theme.palette.divider,
-						fontSize: 12,
-						'&:hover': { borderColor: theme.palette.text.secondary },
-					})}
-				>
-					Refresh
-				</Button>
-				<Button
-					onClick={onSave}
-					disabled={!dirty || saving || !hasSaveData}
-					sx={(theme) => ({
-						bgcolor: dirty
-							? theme.palette.primary.main
-							: theme.palette.borderSubtle,
-						color: dirty
-							? theme.palette.primary.contrastText
-							: theme.palette.textDisabled,
-						fontWeight: 700,
-						fontSize: 12,
-						'&:hover': { bgcolor: theme.palette.primary.light },
-						'&.Mui-disabled': {
-							bgcolor: theme.palette.borderSubtle,
-							color: theme.palette.textDisabled,
-						},
-					})}
-				>
-					{saving ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}
-				</Button>
+				<Tooltip title='Refresh'>
+					<span>
+						<IconButton
+							aria-label='Refresh saves'
+							onClick={onRefresh}
+							disabled={loadingSaves || saving}
+							sx={(theme) => ({
+								color: theme.palette.text.secondary,
+								border: `1px solid ${theme.palette.divider}`,
+								borderRadius: 1,
+								'&:hover': { borderColor: theme.palette.text.secondary },
+							})}
+						>
+							<RefreshIcon />
+						</IconButton>
+					</span>
+				</Tooltip>
+				<Tooltip title={saving ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}>
+					<span>
+						<IconButton
+							aria-label={saving ? 'Saving' : dirty ? 'Save changes' : 'Saved'}
+							onClick={onSave}
+							disabled={!dirty || saving || !hasSaveData}
+							sx={(theme) => ({
+								bgcolor: dirty
+									? theme.palette.primary.main
+									: theme.palette.borderSubtle,
+								color: dirty
+									? theme.palette.primary.contrastText
+									: theme.palette.textDisabled,
+								borderRadius: 1,
+								'&:hover': { bgcolor: theme.palette.primary.light },
+								'&.Mui-disabled': {
+									bgcolor: theme.palette.borderSubtle,
+									color: theme.palette.textDisabled,
+								},
+							})}
+						>
+							{saving ? (
+								<CircularProgress size={20} color='inherit' />
+							) : (
+								<SaveIcon />
+							)}
+						</IconButton>
+					</span>
+				</Tooltip>
 			</Stack>
 		</Box>
 	)

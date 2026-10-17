@@ -5,6 +5,8 @@ import type {
 	SaveData,
 } from './types'
 
+export const PERSONAL_CHEST_SLOT_COUNT = 20
+
 export function isPersonalChestItem(
 	value: unknown,
 ): value is PersonalChestItem {

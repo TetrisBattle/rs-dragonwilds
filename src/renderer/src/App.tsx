@@ -40,7 +40,6 @@ export const App = () => {
 				}}
 			>
 				<AppHeader
-					selectedSave={selectedSave}
 					loadingSaves={editor.loadingSaves}
 					saving={editor.saving}
 					dirty={editor.dirty}
@@ -51,7 +50,6 @@ export const App = () => {
 
 				<PersonalChestWorkspace
 					selectedFile={editor.selectedFile}
-					selectedSave={selectedSave}
 					saveData={editor.saveData}
 					loadingFile={editor.loadingFile}
 					error={editor.error}

@@ -11,6 +11,7 @@ import { DataGrid, type GridColDef } from '@mui/x-data-grid'
 import { useRef, useState } from 'react'
 import { getItemIcon } from './itemIcons'
 import { getItemName } from './itemNames'
+import { PERSONAL_CHEST_SLOT_COUNT } from './model'
 import type { EditableItemField, PersonalChestEntry } from './types'
 
 interface PersonalChestTableProps {
@@ -42,8 +43,6 @@ interface PersonalChestGridRow {
 	onQuantityBlur?: (field: EditableItemField, value: string) => void
 	onRemove?: () => void
 }
-
-const PERSONAL_CHEST_SLOT_COUNT = 20
 
 function getEditableField(
 	item: PersonalChestEntry[1],

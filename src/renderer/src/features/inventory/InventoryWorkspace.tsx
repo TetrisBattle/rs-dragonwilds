@@ -14,16 +14,18 @@ import {
 	Typography,
 } from '@mui/material'
 import { useMemo, useState } from 'react'
-import type { SaveSummary } from '../../../../shared/save'
 import { PersonalChestTable } from './InventoryTable'
 import { getItemIcon } from './itemIcons'
 import { getItemName, getKnownItems } from './itemNames'
-import { getPersonalChest, getPersonalChestEntries } from './model'
+import {
+	getPersonalChest,
+	getPersonalChestEntries,
+	PERSONAL_CHEST_SLOT_COUNT,
+} from './model'
 import type { EditableItemField, PersonalChestEntry, SaveData } from './types'
 
 interface PersonalChestWorkspaceProps {
 	selectedFile: string | null
-	selectedSave?: SaveSummary
 	saveData: SaveData | null
 	loadingFile: boolean
 	error: string | null
@@ -99,7 +101,6 @@ function EmptyCharacterState() {
 
 export function PersonalChestWorkspace({
 	selectedFile,
-	selectedSave,
 	saveData,
 	loadingFile,
 	error,
@@ -112,7 +113,7 @@ export function PersonalChestWorkspace({
 	onMoveItem,
 }: PersonalChestWorkspaceProps) {
 	const [search, setSearch] = useState('')
-	const [showEmptySlots, setShowEmptySlots] = useState(true)
+	const [showEmptySlots, setShowEmptySlots] = useState(false)
 	const [addItemSearch, setAddItemSearch] = useState('')
 	const [addMenuAnchor, setAddMenuAnchor] = useState<HTMLElement | null>(null)
 	const personalChest = useMemo(() => getPersonalChest(saveData), [saveData])
@@ -186,43 +187,6 @@ export function PersonalChestWorkspace({
 					</Alert>
 				)}
 
-				<Stack
-					direction='row'
-					sx={{
-						mb: 2.5,
-						justifyContent: 'space-between',
-						alignItems: 'flex-end',
-					}}
-				>
-					<Box>
-						<Typography
-							sx={{
-								color: 'primary.main',
-								fontSize: 10,
-								fontWeight: 700,
-								letterSpacing: 2,
-							}}
-						>
-							PERSONAL CHEST
-						</Typography>
-						<Typography
-							sx={{
-								mt: 0.65,
-								fontSize: 27,
-								fontWeight: 650,
-								letterSpacing: -0.6,
-							}}
-						>
-							Personal Chest
-						</Typography>
-						<Typography sx={{ mt: 0.5, color: 'text.secondary', fontSize: 12 }}>
-							{selectedSave
-								? `${allEntries.length} items · ${selectedSave.fileName}`
-								: 'Select a character save to inspect its items.'}
-						</Typography>
-					</Box>
-				</Stack>
-
 				{!selectedFile && !loadingFile ? (
 					<EmptyCharacterState />
 				) : loadingFile ? (
@@ -241,8 +205,8 @@ export function PersonalChestWorkspace({
 							}}
 						>
 							<Typography sx={{ color: 'text.secondary', fontSize: 11 }}>
-								{visibleEntries.length} of {allEntries.length} personal chest
-								items
+								{visibleEntries.length} of {PERSONAL_CHEST_SLOT_COUNT} personal
+								chest items
 							</Typography>
 							<FormControlLabel
 								control={
