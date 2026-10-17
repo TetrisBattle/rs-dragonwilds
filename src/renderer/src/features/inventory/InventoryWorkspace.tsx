@@ -10,21 +10,33 @@ import {
 	Paper,
 	Stack,
 	Switch,
+	Tab,
+	Tabs,
 	TextField,
 	Typography,
 } from '@mui/material'
 import { useMemo, useState } from 'react'
-import { PersonalChestTable } from './InventoryTable'
+import { InventoryTable } from './InventoryTable'
 import { getItemIcon } from './itemIcons'
 import { getItemName, getKnownItems } from './itemNames'
 import {
+	getInventoryEntries,
 	getPersonalChest,
 	getPersonalChestEntries,
+	getPlayerInventory,
+	getPlayerInventorySlotCount,
 	PERSONAL_CHEST_SLOT_COUNT,
 } from './model'
-import type { EditableItemField, PersonalChestEntry, SaveData } from './types'
+import type {
+	EditableItemField,
+	InventoryEntry,
+	InventoryView,
+	SaveData,
+} from './types'
 
-interface PersonalChestWorkspaceProps {
+interface InventoryWorkspaceProps {
+	view: InventoryView
+	onViewChange: (view: InventoryView) => void
 	selectedFile: string | null
 	saveData: SaveData | null
 	loadingFile: boolean
@@ -37,19 +49,30 @@ interface PersonalChestWorkspaceProps {
 		field: EditableItemField,
 		value: number | null,
 	) => void
+	onUpdateInventoryItem: (
+		slot: string,
+		field: EditableItemField,
+		value: number | null,
+	) => void
 	onAddItem: (itemId: string) => void
 	onRemoveItem: (slot: string) => void
+	onRemoveInventoryItem: (slot: string) => void
 	onMoveItem: (
+		fromSlot: string,
+		toSlot: string,
+		position?: 'before' | 'after',
+	) => void
+	onMoveInventoryItem: (
 		fromSlot: string,
 		toSlot: string,
 		position?: 'before' | 'after',
 	) => void
 }
 
-function filterPersonalChestEntries(
-	entries: PersonalChestEntry[],
+function filterInventoryEntries(
+	entries: InventoryEntry[],
 	query: string,
-): PersonalChestEntry[] {
+): InventoryEntry[] {
 	const normalizedQuery = query.trim().toLowerCase()
 	if (!normalizedQuery) return entries
 
@@ -91,15 +114,17 @@ function EmptyCharacterState() {
 						maxWidth: 390,
 					}}
 				>
-					Select one of your saves from the left to view its personal chest.
-					Your original save is backed up automatically when you save changes.
+					Select a character save from the left to view its inventory. Your
+					original save is backed up automatically when you save changes.
 				</Typography>
 			</Box>
 		</Paper>
 	)
 }
 
-export function PersonalChestWorkspace({
+export function InventoryWorkspace({
+	view,
+	onViewChange,
 	selectedFile,
 	saveData,
 	loadingFile,
@@ -108,19 +133,33 @@ export function PersonalChestWorkspace({
 	onCloseError,
 	onCloseNotice,
 	onUpdateItem,
+	onUpdateInventoryItem,
 	onAddItem,
 	onRemoveItem,
+	onRemoveInventoryItem,
 	onMoveItem,
-}: PersonalChestWorkspaceProps) {
+	onMoveInventoryItem,
+}: InventoryWorkspaceProps) {
 	const [search, setSearch] = useState('')
 	const [showEmptySlots, setShowEmptySlots] = useState(false)
 	const [addItemSearch, setAddItemSearch] = useState('')
 	const [addMenuAnchor, setAddMenuAnchor] = useState<HTMLElement | null>(null)
 	const personalChest = useMemo(() => getPersonalChest(saveData), [saveData])
-	const allEntries = useMemo(
-		() => getPersonalChestEntries(personalChest),
-		[personalChest],
+	const playerInventory = useMemo(
+		() => getPlayerInventory(saveData),
+		[saveData],
 	)
+	const allEntries = useMemo(
+		() =>
+			view === 'personal-chest'
+				? getPersonalChestEntries(personalChest)
+				: getInventoryEntries(playerInventory),
+		[personalChest, playerInventory, view],
+	)
+	const slotCount =
+		view === 'personal-chest'
+			? PERSONAL_CHEST_SLOT_COUNT
+			: getPlayerInventorySlotCount(playerInventory)
 	const knownItems = useMemo(() => getKnownItems(), [])
 	const filteredKnownItems = useMemo(() => {
 		const normalizedQuery = addItemSearch.trim().toLowerCase()
@@ -133,7 +172,7 @@ export function PersonalChestWorkspace({
 		)
 	}, [addItemSearch, knownItems])
 	const visibleEntries = useMemo(
-		() => filterPersonalChestEntries(allEntries, search),
+		() => filterInventoryEntries(allEntries, search),
 		[allEntries, search],
 	)
 
@@ -187,6 +226,16 @@ export function PersonalChestWorkspace({
 					</Alert>
 				)}
 
+				<Tabs
+					value={view}
+					onChange={(_, nextView: InventoryView) => onViewChange(nextView)}
+					aria-label='Inventory views'
+					sx={{ mb: 2 }}
+				>
+					<Tab value='personal-chest' label='Personal Chest' />
+					<Tab value='inventory' label='Inventory' />
+				</Tabs>
+
 				{!selectedFile && !loadingFile ? (
 					<EmptyCharacterState />
 				) : loadingFile ? (
@@ -205,8 +254,9 @@ export function PersonalChestWorkspace({
 							}}
 						>
 							<Typography sx={{ color: 'text.secondary', fontSize: 11 }}>
-								{visibleEntries.length} of {PERSONAL_CHEST_SLOT_COUNT} personal
-								chest items
+								{visibleEntries.length} of {slotCount}{' '}
+								{view === 'personal-chest' ? 'personal chest' : 'inventory'}{' '}
+								items
 							</Typography>
 							<FormControlLabel
 								control={
@@ -225,101 +275,105 @@ export function PersonalChestWorkspace({
 									'& .MuiFormControlLabel-label': { fontSize: 11 },
 								}}
 							/>
-							<Button
-								variant='outlined'
-								onClick={(event) => {
-									setAddItemSearch('')
-									setAddMenuAnchor(event.currentTarget)
-								}}
-								disabled={!saveData}
-								sx={(theme) => ({
-									width: { xs: '100%', sm: 200 },
-									color: theme.palette.text.primary,
-									borderColor: theme.palette.divider,
-									fontSize: 12,
-								})}
-							>
-								Add item
-							</Button>
-							<Menu
-								anchorEl={addMenuAnchor}
-								open={Boolean(addMenuAnchor)}
-								onClose={() => {
-									setAddMenuAnchor(null)
-									setAddItemSearch('')
-								}}
-								slotProps={{
-									paper: {
-										sx: { maxHeight: 420, minWidth: 280 },
-									},
-									list: {
-										autoFocusItem: false,
-									},
-								}}
-							>
-								<Box
-									sx={{
-										position: 'sticky',
-										top: 0,
-										zIndex: 1,
-										p: 1,
-										bgcolor: 'background.paper',
+							{view === 'personal-chest' && (
+								<Button
+									variant='outlined'
+									onClick={(event) => {
+										setAddItemSearch('')
+										setAddMenuAnchor(event.currentTarget)
+									}}
+									disabled={!saveData}
+									sx={(theme) => ({
+										width: { xs: '100%', sm: 200 },
+										color: theme.palette.text.primary,
+										borderColor: theme.palette.divider,
+										fontSize: 12,
+									})}
+								>
+									Add item
+								</Button>
+							)}
+							{view === 'personal-chest' && (
+								<Menu
+									anchorEl={addMenuAnchor}
+									open={Boolean(addMenuAnchor)}
+									onClose={() => {
+										setAddMenuAnchor(null)
+										setAddItemSearch('')
+									}}
+									slotProps={{
+										paper: {
+											sx: { maxHeight: 420, minWidth: 280 },
+										},
+										list: {
+											autoFocusItem: false,
+										},
 									}}
 								>
-									<TextField
-										autoFocus
-										fullWidth
-										size='small'
-										placeholder='Search items by name or ID'
-										value={addItemSearch}
-										onChange={(event) => setAddItemSearch(event.target.value)}
-										onKeyDown={(event) => {
-											if (event.key !== 'Escape') event.stopPropagation()
+									<Box
+										sx={{
+											position: 'sticky',
+											top: 0,
+											zIndex: 1,
+											p: 1,
+											bgcolor: 'background.paper',
 										}}
-										slotProps={{
-											htmlInput: {
-												'aria-label': 'Search items to add',
-											},
-										}}
-									/>
-								</Box>
-								{filteredKnownItems.length ? (
-									filteredKnownItems.map((item) => (
-										<MenuItem
-											key={item.id}
-											onClick={() => {
-												onAddItem(item.id)
-												setAddMenuAnchor(null)
-												setAddItemSearch('')
+									>
+										<TextField
+											autoFocus
+											fullWidth
+											size='small'
+											placeholder='Search items by name or ID'
+											value={addItemSearch}
+											onChange={(event) => setAddItemSearch(event.target.value)}
+											onKeyDown={(event) => {
+												if (event.key !== 'Escape') event.stopPropagation()
 											}}
-										>
-											<Stack
-												direction='row'
-												spacing={1}
-												sx={{ alignItems: 'center' }}
+											slotProps={{
+												htmlInput: {
+													'aria-label': 'Search items to add',
+												},
+											}}
+										/>
+									</Box>
+									{filteredKnownItems.length ? (
+										filteredKnownItems.map((item) => (
+											<MenuItem
+												key={item.id}
+												onClick={() => {
+													onAddItem(item.id)
+													setAddMenuAnchor(null)
+													setAddItemSearch('')
+												}}
 											>
-												{getItemIcon(item.id) && (
-													<Box
-														component='img'
-														src={getItemIcon(item.id)}
-														alt=''
-														aria-hidden='true'
-														sx={{
-															width: 24,
-															height: 24,
-															objectFit: 'contain',
-															flexShrink: 0,
-														}}
-													/>
-												)}
-												{item.name}
-											</Stack>
-										</MenuItem>
-									))
-								) : (
-									<MenuItem disabled>No matching items</MenuItem>
-								)}
-							</Menu>
+												<Stack
+													direction='row'
+													spacing={1}
+													sx={{ alignItems: 'center' }}
+												>
+													{getItemIcon(item.id) && (
+														<Box
+															component='img'
+															src={getItemIcon(item.id)}
+															alt=''
+															aria-hidden='true'
+															sx={{
+																width: 24,
+																height: 24,
+																objectFit: 'contain',
+																flexShrink: 0,
+															}}
+														/>
+													)}
+													{item.name}
+												</Stack>
+											</MenuItem>
+										))
+									) : (
+										<MenuItem disabled>No matching items</MenuItem>
+									)}
+								</Menu>
+							)}
 							<TextField
 								placeholder='Search item name, ID or slot'
 								value={search}
@@ -354,11 +408,18 @@ export function PersonalChestWorkspace({
 								}}
 							/>
 						</Stack>
-						<PersonalChestTable
+						<InventoryTable
 							entries={visibleEntries}
-							onUpdateItem={onUpdateItem}
-							onRemoveItem={onRemoveItem}
-							onMoveItem={onMoveItem}
+							slotCount={slotCount}
+							onUpdateItem={
+								view === 'personal-chest' ? onUpdateItem : onUpdateInventoryItem
+							}
+							onRemoveItem={
+								view === 'personal-chest' ? onRemoveItem : onRemoveInventoryItem
+							}
+							onMoveItem={
+								view === 'personal-chest' ? onMoveItem : onMoveInventoryItem
+							}
 							showEmptySlots={showEmptySlots}
 						/>
 					</>

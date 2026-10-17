@@ -11,11 +11,11 @@ import { DataGrid, type GridColDef } from '@mui/x-data-grid'
 import { useRef, useState } from 'react'
 import { getItemIcon } from './itemIcons'
 import { getItemName } from './itemNames'
-import { PERSONAL_CHEST_SLOT_COUNT } from './model'
-import type { EditableItemField, PersonalChestEntry } from './types'
+import type { EditableItemField, InventoryEntry } from './types'
 
-interface PersonalChestTableProps {
-	entries: PersonalChestEntry[]
+interface InventoryTableProps {
+	entries: InventoryEntry[]
+	slotCount: number
 	onUpdateItem: (
 		slot: string,
 		field: EditableItemField,
@@ -30,7 +30,7 @@ interface PersonalChestTableProps {
 	showEmptySlots: boolean
 }
 
-interface PersonalChestGridRow {
+interface InventoryGridRow {
 	id: string
 	slot: string
 	itemName: string
@@ -44,15 +44,13 @@ interface PersonalChestGridRow {
 	onRemove?: () => void
 }
 
-function getEditableField(
-	item: PersonalChestEntry[1],
-): EditableItemField | null {
+function getEditableField(item: InventoryEntry[1]): EditableItemField | null {
 	if (typeof item.Count === 'number') return 'Count'
 	if (typeof item.Durability === 'number') return 'Durability'
-	return 'Count'
+	return null
 }
 
-function renderSlotCell(row: PersonalChestGridRow) {
+function renderSlotCell(row: InventoryGridRow) {
 	return (
 		<Stack
 			sx={{
@@ -76,7 +74,7 @@ function renderSlotCell(row: PersonalChestGridRow) {
 	)
 }
 
-function renderItemCell(row: PersonalChestGridRow) {
+function renderItemCell(row: InventoryGridRow) {
 	return (
 		<Stack
 			direction='row'
@@ -129,7 +127,7 @@ function renderItemCell(row: PersonalChestGridRow) {
 	)
 }
 
-function renderQuantityCell(row: PersonalChestGridRow) {
+function renderQuantityCell(row: InventoryGridRow) {
 	if (row.isEmpty) return null
 	if (!row.field || row.value === null) {
 		return (
@@ -188,7 +186,7 @@ function renderQuantityCell(row: PersonalChestGridRow) {
 	)
 }
 
-const columns: GridColDef<PersonalChestGridRow>[] = [
+const columns: GridColDef<InventoryGridRow>[] = [
 	{
 		field: 'slot',
 		headerName: 'SLOT',
@@ -253,18 +251,19 @@ function NoRowsOverlay() {
 				fontSize: 14,
 			}}
 		>
-			No matching personal chest items.
+			No matching inventory items.
 		</Stack>
 	)
 }
 
-export function PersonalChestTable({
+export function InventoryTable({
 	entries,
+	slotCount,
 	onUpdateItem,
 	onRemoveItem,
 	onMoveItem,
 	showEmptySlots,
-}: PersonalChestTableProps) {
+}: InventoryTableProps) {
 	const [draftValues, setDraftValues] = useState<Record<string, string>>({})
 	const dropIndicatorRef = useRef<HTMLDivElement>(null)
 	const dropTargetRef = useRef<{
@@ -278,7 +277,7 @@ export function PersonalChestTable({
 		}
 	}
 
-	const occupiedRows = entries.map(([slot, item]): PersonalChestGridRow => {
+	const occupiedRows = entries.map(([slot, item]): InventoryGridRow => {
 		const countDraftKey = `${slot}:Count`
 		const durabilityDraftKey = `${slot}:Durability`
 		const field = Object.hasOwn(draftValues, countDraftKey)
@@ -345,8 +344,8 @@ export function PersonalChestTable({
 		}
 	})
 	const occupiedSlots = new Set(occupiedRows.map((row) => row.slot))
-	const emptyRows: PersonalChestGridRow[] = Array.from(
-		{ length: PERSONAL_CHEST_SLOT_COUNT },
+	const emptyRows: InventoryGridRow[] = Array.from(
+		{ length: slotCount },
 		(_, slot) => String(slot),
 	)
 		.filter((slot) => !occupiedSlots.has(slot))

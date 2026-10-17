@@ -3,9 +3,12 @@ import type { SaveData, SaveSummary } from '../../../../shared/save'
 import {
 	addPersonalChestItem as addPersonalChestItemToSave,
 	updatePersonalChestItem as applyPersonalChestItemUpdate,
+	updatePlayerInventoryItem as applyPlayerInventoryItemUpdate,
 	initializeMissingItemCounts,
 	movePersonalChestItem as movePersonalChestItemInSave,
+	movePlayerInventoryItem as movePlayerInventoryItemInSave,
 	removePersonalChestItem as removePersonalChestItemFromSave,
+	removePlayerInventoryItem as removePlayerInventoryItemFromSave,
 } from '../inventory/model'
 import type { EditableItemField } from '../inventory/types'
 
@@ -129,6 +132,19 @@ export function useSaveEditor() {
 		[],
 	)
 
+	const updatePlayerInventoryItem = useCallback(
+		(slot: string, field: EditableItemField, value: number | null) => {
+			setSaveData((current) =>
+				current
+					? applyPlayerInventoryItemUpdate(current, slot, field, value)
+					: current,
+			)
+			setDirty(true)
+			setNotice(null)
+		},
+		[],
+	)
+
 	const addItem = useCallback((itemId: string) => {
 		setSaveData((current) =>
 			current ? addPersonalChestItemToSave(current, itemId) : current,
@@ -145,6 +161,14 @@ export function useSaveEditor() {
 		setNotice('Item removed. Save changes to keep it.')
 	}, [])
 
+	const removePlayerInventoryItem = useCallback((slot: string) => {
+		setSaveData((current) =>
+			current ? removePlayerInventoryItemFromSave(current, slot) : current,
+		)
+		setDirty(true)
+		setNotice('Item removed. Save changes to keep it.')
+	}, [])
+
 	const moveItem = useCallback(
 		(
 			fromSlot: string,
@@ -155,6 +179,24 @@ export function useSaveEditor() {
 			setSaveData((current) =>
 				current
 					? movePersonalChestItemInSave(current, fromSlot, toSlot, position)
+					: current,
+			)
+			setDirty(true)
+			setNotice(null)
+		},
+		[],
+	)
+
+	const movePlayerInventoryItem = useCallback(
+		(
+			fromSlot: string,
+			toSlot: string,
+			position: 'before' | 'after' = 'before',
+		) => {
+			if (fromSlot === toSlot) return
+			setSaveData((current) =>
+				current
+					? movePlayerInventoryItemInSave(current, fromSlot, toSlot, position)
 					: current,
 			)
 			setDirty(true)
@@ -200,9 +242,12 @@ export function useSaveEditor() {
 		confirmPendingAction,
 		closePendingAction,
 		updateItem,
+		updatePlayerInventoryItem,
 		addItem,
 		removeItem,
+		removePlayerInventoryItem,
 		moveItem,
+		movePlayerInventoryItem,
 		saveChanges,
 		closeError: () => setError(null),
 		closeNotice: () => setNotice(null),

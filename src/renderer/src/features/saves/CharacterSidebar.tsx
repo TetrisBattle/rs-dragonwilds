@@ -1,10 +1,4 @@
-import {
-	Box,
-	CircularProgress,
-	Divider,
-	Stack,
-	Typography,
-} from '@mui/material'
+import { Box, CircularProgress, Stack, Typography } from '@mui/material'
 import type { SaveSummary } from '../../../../shared/save'
 
 interface CharacterSidebarProps {
@@ -36,51 +30,6 @@ export function CharacterSidebar({
 				borderRight: `1px solid ${theme.palette.divider}`,
 			})}
 		>
-			<Stack
-				direction='row'
-				spacing={1.5}
-				sx={(theme) => ({
-					px: 2.5,
-					pt: 2.7,
-					pb: 2.5,
-					alignItems: 'center',
-					color: theme.palette.primary.main,
-				})}
-			>
-				<Box
-					sx={{
-						width: 38,
-						height: 38,
-						borderRadius: '12px',
-						display: 'grid',
-						placeItems: 'center',
-						bgcolor: 'surfaceAccent',
-						color: 'primary.main',
-						fontSize: 19,
-						fontWeight: 800,
-					}}
-				>
-					R
-				</Box>
-				<Box>
-					<Typography
-						sx={{ fontSize: 15, fontWeight: 750, letterSpacing: 0.2 }}
-					>
-						RUNEKEEPER
-					</Typography>
-					<Typography
-						sx={{
-							color: 'text.secondary',
-							fontSize: 10,
-							letterSpacing: 1.8,
-						}}
-					>
-						DRAGONWILDS SAVE EDITOR
-					</Typography>
-				</Box>
-			</Stack>
-
-			<Divider sx={{ borderColor: 'divider' }} />
 			<Stack
 				direction='row'
 				sx={{
@@ -138,17 +87,13 @@ export function CharacterSidebar({
 										border: '1px solid',
 										borderColor: selected ? 'borderAccent' : 'transparent',
 										borderRadius: 2,
-										bgcolor: selected
-											? 'surfaceSelected'
-											: 'transparent',
+										bgcolor: selected ? 'surfaceSelected' : 'transparent',
 										color: 'text.primary',
 										cursor: 'pointer',
 										px: 1.4,
 										py: 1.35,
 										'&:hover': {
-											bgcolor: selected
-												? 'surfaceSelected'
-												: 'surfaceHover',
+											bgcolor: selected ? 'surfaceSelected' : 'surfaceHover',
 										},
 									}}
 								>
