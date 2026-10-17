@@ -21,6 +21,9 @@ import { getItemIcon } from './itemIcons'
 import { getItemName, getKnownItems } from './itemNames'
 import {
 	getInventoryEntries,
+	getLoadout,
+	getLoadoutEntries,
+	getLoadoutSlotCount,
 	getPersonalChest,
 	getPersonalChestEntries,
 	getPlayerInventory,
@@ -29,6 +32,7 @@ import {
 } from './model'
 import type {
 	EditableItemField,
+	InventoryCategory,
 	InventoryEntry,
 	InventoryView,
 	SaveData,
@@ -50,6 +54,11 @@ interface InventoryWorkspaceProps {
 		value: number | null,
 	) => void
 	onUpdateInventoryItem: (
+		slot: string,
+		field: EditableItemField,
+		value: number | null,
+	) => void
+	onUpdateLoadoutItem: (
 		slot: string,
 		field: EditableItemField,
 		value: number | null,
@@ -83,6 +92,40 @@ function filterInventoryEntries(
 			(getItemName(item.ItemData)?.toLowerCase().includes(normalizedQuery) ??
 				false),
 	)
+}
+
+function getInventoryCategory(slot: string, itemId: string): InventoryCategory {
+	const slotIndex = Number(slot)
+	if (Number.isSafeInteger(slotIndex)) {
+		if (slotIndex >= 0 && slotIndex <= 7) return 'quick-access'
+		if (slotIndex >= 8 && slotIndex <= 39) return 'items'
+		if (slotIndex >= 72 && slotIndex <= 103) return 'arrows'
+		if (slotIndex >= 104 && slotIndex <= 135) return 'quest-items'
+	}
+
+	const name = getItemName(itemId)
+	if (!name) return 'items'
+
+	if (name.endsWith(' Rune') || name === 'Rune Essence') return 'runes'
+
+	if (
+		name === 'Ghostspeak Amulet' ||
+		name === 'The Pride of the Avernic' ||
+		name === "Tainted King's Token" ||
+		name === 'Missing Letter' ||
+		name === 'Letter' ||
+		name === 'The Binding of Ib' ||
+		name === 'Coclear Malificarum' ||
+		name === 'Corrupted Essence Sample' ||
+		name.startsWith('Curse Fragment ') ||
+		name === 'Challenge Horn' ||
+		name === "Velgar's Head" ||
+		name === 'Aetheric Fundamentals, a Primordial Primer'
+	) {
+		return 'quest-items'
+	}
+
+	return 'items'
 }
 
 function EmptyCharacterState() {
@@ -134,6 +177,7 @@ export function InventoryWorkspace({
 	onCloseNotice,
 	onUpdateItem,
 	onUpdateInventoryItem,
+	onUpdateLoadoutItem,
 	onAddItem,
 	onRemoveItem,
 	onRemoveInventoryItem,
@@ -141,25 +185,40 @@ export function InventoryWorkspace({
 	onMoveInventoryItem,
 }: InventoryWorkspaceProps) {
 	const [search, setSearch] = useState('')
+	const [inventoryCategory, setInventoryCategory] =
+		useState<InventoryCategory>('items')
 	const [showEmptySlots, setShowEmptySlots] = useState(false)
 	const [addItemSearch, setAddItemSearch] = useState('')
 	const [addMenuAnchor, setAddMenuAnchor] = useState<HTMLElement | null>(null)
+	const isLoadoutView = view === 'inventory' && inventoryCategory === 'loadout'
 	const personalChest = useMemo(() => getPersonalChest(saveData), [saveData])
 	const playerInventory = useMemo(
 		() => getPlayerInventory(saveData),
 		[saveData],
 	)
+	const loadout = useMemo(() => getLoadout(saveData), [saveData])
 	const allEntries = useMemo(
 		() =>
 			view === 'personal-chest'
 				? getPersonalChestEntries(personalChest)
-				: getInventoryEntries(playerInventory),
-		[personalChest, playerInventory, view],
+				: isLoadoutView
+					? getLoadoutEntries(saveData)
+					: getInventoryEntries(playerInventory),
+		[isLoadoutView, personalChest, playerInventory, saveData, view],
 	)
 	const slotCount =
 		view === 'personal-chest'
 			? PERSONAL_CHEST_SLOT_COUNT
-			: getPlayerInventorySlotCount(playerInventory)
+			: isLoadoutView
+				? getLoadoutSlotCount(loadout)
+				: getPlayerInventorySlotCount(playerInventory)
+	const categoryEntries =
+		view === 'inventory' && !isLoadoutView
+			? allEntries.filter(
+					([slot, item]) =>
+						getInventoryCategory(slot, item.ItemData) === inventoryCategory,
+				)
+			: allEntries
 	const knownItems = useMemo(() => getKnownItems(), [])
 	const filteredKnownItems = useMemo(() => {
 		const normalizedQuery = addItemSearch.trim().toLowerCase()
@@ -172,8 +231,8 @@ export function InventoryWorkspace({
 		)
 	}, [addItemSearch, knownItems])
 	const visibleEntries = useMemo(
-		() => filterInventoryEntries(allEntries, search),
-		[allEntries, search],
+		() => filterInventoryEntries(categoryEntries, search),
+		[categoryEntries, search],
 	)
 
 	return (
@@ -235,6 +294,23 @@ export function InventoryWorkspace({
 					<Tab value='personal-chest' label='Personal Chest' />
 					<Tab value='inventory' label='Inventory' />
 				</Tabs>
+				{view === 'inventory' && (
+					<Tabs
+						value={inventoryCategory}
+						onChange={(_, nextCategory: InventoryCategory) =>
+							setInventoryCategory(nextCategory)
+						}
+						aria-label='Inventory categories'
+						sx={{ mb: 2 }}
+					>
+						<Tab value='quick-access' label='Quick Access' />
+						<Tab value='items' label='Items' />
+						<Tab value='runes' label='Runes' />
+						<Tab value='arrows' label='Arrows' />
+						<Tab value='quest-items' label='Quest Items' />
+						<Tab value='loadout' label='Loadout' />
+					</Tabs>
+				)}
 
 				{!selectedFile && !loadingFile ? (
 					<EmptyCharacterState />
@@ -254,11 +330,27 @@ export function InventoryWorkspace({
 							}}
 						>
 							<Typography sx={{ color: 'text.secondary', fontSize: 11 }}>
-								{visibleEntries.length} of {slotCount}{' '}
-								{view === 'personal-chest' ? 'personal chest' : 'inventory'}{' '}
-								items
+								{view === 'personal-chest'
+									? `${visibleEntries.length} of ${slotCount} personal chest items`
+									: isLoadoutView
+										? `${visibleEntries.length} equipped items`
+										: `${visibleEntries.length} ${
+												inventoryCategory === 'quest-items'
+													? 'quest items'
+													: inventoryCategory === 'quick-access'
+														? 'quick access items'
+														: inventoryCategory === 'arrows'
+															? 'arrows'
+															: inventoryCategory === 'runes'
+																? 'runes'
+																: 'items'
+											}`}
 							</Typography>
 							<FormControlLabel
+								hidden={
+									isLoadoutView ||
+									(view === 'inventory' && inventoryCategory !== 'items')
+								}
 								control={
 									<Switch
 										size='small'
@@ -412,7 +504,11 @@ export function InventoryWorkspace({
 							entries={visibleEntries}
 							slotCount={slotCount}
 							onUpdateItem={
-								view === 'personal-chest' ? onUpdateItem : onUpdateInventoryItem
+								view === 'personal-chest'
+									? onUpdateItem
+									: isLoadoutView
+										? onUpdateLoadoutItem
+										: onUpdateInventoryItem
 							}
 							onRemoveItem={
 								view === 'personal-chest' ? onRemoveItem : onRemoveInventoryItem
@@ -420,7 +516,10 @@ export function InventoryWorkspace({
 							onMoveItem={
 								view === 'personal-chest' ? onMoveItem : onMoveInventoryItem
 							}
-							showEmptySlots={showEmptySlots}
+							showEmptySlots={!isLoadoutView && showEmptySlots}
+							loadoutMode={isLoadoutView}
+							allowRemove={!isLoadoutView}
+							allowReorder={!isLoadoutView}
 						/>
 					</>
 				)}

@@ -1,4 +1,5 @@
 import DeleteIcon from '@mui/icons-material/Delete'
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator'
 import {
 	Box,
 	IconButton,
@@ -10,7 +11,11 @@ import {
 import { DataGrid, type GridColDef } from '@mui/x-data-grid'
 import { useRef, useState } from 'react'
 import { getItemIcon } from './itemIcons'
-import { getItemName } from './itemNames'
+import { getItemMaxStack, getItemName } from './itemNames'
+import {
+	canUpgradeItemPowerLevel,
+	getItemBasePowerLevel,
+} from './itemPowerLevels'
 import type { EditableItemField, InventoryEntry } from './types'
 
 interface InventoryTableProps {
@@ -28,6 +33,9 @@ interface InventoryTableProps {
 		position?: 'before' | 'after',
 	) => void
 	showEmptySlots: boolean
+	loadoutMode?: boolean
+	allowRemove?: boolean
+	allowReorder?: boolean
 }
 
 interface InventoryGridRow {
@@ -37,11 +45,20 @@ interface InventoryGridRow {
 	itemIcon: string | undefined
 	isKnownItem: boolean
 	isEmpty: boolean
+	loadoutMode?: boolean
 	field: EditableItemField | null
 	value: string | null
+	basePowerLevel: number | null
+	powerLevelValue: string | null
+	canUpgradePowerLevel: boolean
+	onSelectForDrag?: () => void
+	onStartDrag?: () => void
 	onQuantityChange?: (field: EditableItemField, value: string) => void
 	onQuantityBlur?: (field: EditableItemField, value: string) => void
+	onPowerLevelChange?: (value: string) => void
+	onPowerLevelBlur?: (value: string) => void
 	onRemove?: () => void
+	canDrag?: boolean
 }
 
 function getEditableField(item: InventoryEntry[1]): EditableItemField | null {
@@ -53,13 +70,49 @@ function getEditableField(item: InventoryEntry[1]): EditableItemField | null {
 function renderSlotCell(row: InventoryGridRow) {
 	return (
 		<Stack
+			direction='row'
+			spacing={0.5}
 			sx={{
 				width: '100%',
-				height: '100%',
-				justifyContent: 'center',
-				cursor: row.isEmpty ? 'default' : 'grab',
+				alignItems: 'center',
 			}}
 		>
+			{row.isEmpty || !row.canDrag ? (
+				<Box sx={{ width: 26, flexShrink: 0 }} />
+			) : (
+				<IconButton
+					size='small'
+					draggable
+					aria-label={`Drag item from slot ${row.slot}`}
+					onClick={(event) => {
+						event.stopPropagation()
+						row.onSelectForDrag?.()
+					}}
+					onDragStart={(event) => {
+						row.onStartDrag?.()
+						row.onSelectForDrag?.()
+						event.dataTransfer.setData('text/plain', row.slot)
+						event.dataTransfer.effectAllowed = 'move'
+						const rowElement = event.currentTarget.closest('.MuiDataGrid-row')
+						if (rowElement) {
+							const bounds = rowElement.getBoundingClientRect()
+							event.dataTransfer.setDragImage(
+								rowElement,
+								event.clientX - bounds.left,
+								event.clientY - bounds.top,
+							)
+						}
+					}}
+					sx={{
+						p: 0.25,
+						color: 'text.secondary',
+						cursor: 'grab',
+						flexShrink: 0,
+					}}
+				>
+					<DragIndicatorIcon fontSize='small' />
+				</IconButton>
+			)}
 			<Typography
 				sx={{
 					color: 'text.secondary',
@@ -79,17 +132,10 @@ function renderItemCell(row: InventoryGridRow) {
 		<Stack
 			direction='row'
 			spacing={1}
-			draggable={!row.isEmpty}
-			onDragStart={(event) => {
-				event.dataTransfer.setData('text/plain', row.slot)
-				event.dataTransfer.effectAllowed = 'move'
-			}}
 			sx={{
 				alignItems: 'center',
 				minWidth: 0,
 				width: '100%',
-				height: '100%',
-				cursor: row.isEmpty ? 'default' : 'grab',
 			}}
 		>
 			{row.itemIcon && (
@@ -134,7 +180,7 @@ function renderQuantityCell(row: InventoryGridRow) {
 			<Typography
 				sx={{ color: 'textSubtle', fontSize: 10, textAlign: 'center' }}
 			>
-				Unique item
+				{row.loadoutMode ? 'Not tracked' : 'Unique item'}
 			</Typography>
 		)
 	}
@@ -145,8 +191,6 @@ function renderQuantityCell(row: InventoryGridRow) {
 			direction='row'
 			sx={{
 				width: '100%',
-				height: '100%',
-				alignItems: 'center',
 				justifyContent: 'center',
 			}}
 		>
@@ -186,12 +230,70 @@ function renderQuantityCell(row: InventoryGridRow) {
 	)
 }
 
+function renderPowerLevelCell(row: InventoryGridRow) {
+	if (row.isEmpty || row.basePowerLevel === null) return null
+
+	if (!row.canUpgradePowerLevel) {
+		return (
+			<Typography
+				aria-label={`Power level for ${row.itemName}`}
+				sx={{ width: '100%', textAlign: 'center', fontSize: 12 }}
+			>
+				{row.powerLevelValue}
+			</Typography>
+		)
+	}
+
+	return (
+		<TextField
+			type='text'
+			value={row.powerLevelValue ?? ''}
+			onChange={(event) => row.onPowerLevelChange?.(event.target.value)}
+			onBlur={(event) => row.onPowerLevelBlur?.(event.target.value)}
+			slotProps={{
+				htmlInput: {
+					'aria-label': `Power level for ${row.itemName}`,
+					inputMode: 'numeric',
+				},
+			}}
+			fullWidth
+			sx={(theme) => ({
+				width: '100%',
+				height: '100%',
+				minWidth: 0,
+				'& .MuiOutlinedInput-root': {
+					height: '100%',
+					boxSizing: 'border-box',
+					bgcolor: theme.palette.surfaceInput,
+					color: theme.palette.text.primary,
+					fontSize: 12,
+					'& fieldset': {
+						borderColor: theme.palette.divider,
+						boxSizing: 'border-box',
+					},
+					'&.Mui-focused fieldset': { borderWidth: 1 },
+					'&:hover:not(.Mui-focused) fieldset': {
+						borderColor: theme.palette.divider,
+					},
+				},
+				'& .MuiInputBase-input': {
+					boxSizing: 'border-box',
+					height: '100%',
+					padding: '0 8px',
+					textAlign: 'center',
+				},
+			})}
+		/>
+	)
+}
+
 const columns: GridColDef<InventoryGridRow>[] = [
 	{
 		field: 'slot',
 		headerName: 'SLOT',
 		width: 90,
 		minWidth: 60,
+		display: 'flex',
 		resizable: true,
 		sortable: false,
 		renderCell: ({ row }) => renderSlotCell(row),
@@ -201,6 +303,7 @@ const columns: GridColDef<InventoryGridRow>[] = [
 		headerName: 'ITEM',
 		flex: 1,
 		minWidth: 200,
+		display: 'flex',
 		resizable: true,
 		sortable: false,
 		renderCell: ({ row }) => renderItemCell(row),
@@ -210,6 +313,7 @@ const columns: GridColDef<InventoryGridRow>[] = [
 		headerName: 'QUANTITY',
 		width: 190,
 		minWidth: 120,
+		display: 'flex',
 		resizable: true,
 		sortable: false,
 		align: 'center',
@@ -217,10 +321,23 @@ const columns: GridColDef<InventoryGridRow>[] = [
 		renderCell: ({ row }) => renderQuantityCell(row),
 	},
 	{
+		field: 'powerLevel',
+		headerName: 'POWER LEVEL',
+		width: 140,
+		minWidth: 120,
+		display: 'flex',
+		resizable: true,
+		sortable: false,
+		align: 'center',
+		headerAlign: 'center',
+		renderCell: ({ row }) => renderPowerLevelCell(row),
+	},
+	{
 		field: 'remove',
 		headerName: 'REMOVE',
 		width: 90,
 		minWidth: 70,
+		display: 'flex',
 		resizable: true,
 		sortable: false,
 		align: 'center',
@@ -263,9 +380,14 @@ export function InventoryTable({
 	onRemoveItem,
 	onMoveItem,
 	showEmptySlots,
+	loadoutMode = false,
+	allowRemove = true,
+	allowReorder = true,
 }: InventoryTableProps) {
 	const [draftValues, setDraftValues] = useState<Record<string, string>>({})
+	const [selectedDragSlot, setSelectedDragSlot] = useState<string | null>(null)
 	const dropIndicatorRef = useRef<HTMLDivElement>(null)
+	const dragSourceRef = useRef<string | null>(null)
 	const dropTargetRef = useRef<{
 		slot: string
 		position: 'before' | 'after'
@@ -280,13 +402,32 @@ export function InventoryTable({
 	const occupiedRows = entries.map(([slot, item]): InventoryGridRow => {
 		const countDraftKey = `${slot}:Count`
 		const durabilityDraftKey = `${slot}:Durability`
-		const field = Object.hasOwn(draftValues, countDraftKey)
-			? 'Count'
-			: Object.hasOwn(draftValues, durabilityDraftKey)
-				? 'Durability'
-				: getEditableField(item)
+		const powerLevelDraftKey = `${slot}:PowerLevel`
 		const itemName = getItemName(item.ItemData)
+		const field = loadoutMode
+			? null
+			: getItemMaxStack(item.ItemData, item) === 1
+				? null
+				: Object.hasOwn(draftValues, countDraftKey)
+					? 'Count'
+					: Object.hasOwn(draftValues, durabilityDraftKey)
+						? 'Durability'
+						: getEditableField(item)
 		const itemIcon = getItemIcon(item.ItemData)
+		const basePowerLevel = getItemBasePowerLevel(item.ItemData) ?? null
+		const canUpgradePowerLevel = canUpgradeItemPowerLevel(item.ItemData)
+		const numUpgradesApplied =
+			typeof item.NumUpgradesApplied === 'number' &&
+			Number.isSafeInteger(item.NumUpgradesApplied)
+				? item.NumUpgradesApplied
+				: 0
+		let powerLevel: number | null = null
+		if (basePowerLevel !== null) {
+			const calculatedPowerLevel = basePowerLevel + numUpgradesApplied
+			powerLevel = Number.isSafeInteger(calculatedPowerLevel)
+				? Math.max(basePowerLevel, calculatedPowerLevel)
+				: basePowerLevel
+		}
 
 		return {
 			id: slot,
@@ -295,7 +436,23 @@ export function InventoryTable({
 			itemIcon,
 			isKnownItem: itemName !== undefined,
 			isEmpty: false,
+			loadoutMode,
+			canDrag: allowReorder,
 			field,
+			basePowerLevel,
+			canUpgradePowerLevel,
+			powerLevelValue:
+				powerLevel === null
+					? null
+					: (draftValues[powerLevelDraftKey] ?? powerLevel.toString()),
+			onSelectForDrag: allowReorder
+				? () => setSelectedDragSlot(slot)
+				: undefined,
+			onStartDrag: allowReorder
+				? () => {
+						dragSourceRef.current = slot
+					}
+				: undefined,
 			value: field
 				? (draftValues[`${slot}:${field}`] ?? item[field]?.toString() ?? '')
 				: null,
@@ -332,14 +489,42 @@ export function InventoryTable({
 					return next
 				})
 			},
+			onPowerLevelChange: (inputValue) => {
+				if (!canUpgradePowerLevel) return
+				setDraftValues((current) => ({
+					...current,
+					[powerLevelDraftKey]: inputValue,
+				}))
+			},
+			onPowerLevelBlur: (inputValue) => {
+				if (canUpgradePowerLevel && basePowerLevel !== null) {
+					const requestedPowerLevel = Number(inputValue)
+					const nextPowerLevel = Number.isSafeInteger(requestedPowerLevel)
+						? Math.max(basePowerLevel, requestedPowerLevel)
+						: basePowerLevel
+					if (nextPowerLevel !== powerLevel) {
+						onUpdateItem(
+							slot,
+							'NumUpgradesApplied',
+							nextPowerLevel - basePowerLevel,
+						)
+					}
+				}
+				setDraftValues((current) => {
+					const next = { ...current }
+					delete next[powerLevelDraftKey]
+					return next
+				})
+			},
 			onRemove: () => {
 				setDraftValues((current) => {
 					const next = { ...current }
 					delete next[countDraftKey]
 					delete next[durabilityDraftKey]
+					delete next[powerLevelDraftKey]
 					return next
 				})
-				onRemoveItem(slot)
+				onRemoveItem?.(slot)
 			},
 		}
 	})
@@ -358,10 +543,16 @@ export function InventoryTable({
 			isEmpty: true,
 			field: null,
 			value: null,
+			basePowerLevel: null,
+			powerLevelValue: null,
+			canUpgradePowerLevel: false,
 		}))
 	const rows = [...occupiedRows, ...(showEmptySlots ? emptyRows : [])].sort(
 		(left, right) => Number(left.slot) - Number(right.slot),
 	)
+	const clearDragSource = () => {
+		dragSourceRef.current = null
+	}
 
 	return (
 		<Paper
@@ -370,10 +561,11 @@ export function InventoryTable({
 				const target = (event.target as HTMLElement).closest<HTMLElement>(
 					'.MuiDataGrid-row',
 				)
-				if (!target) return
+				if (!allowReorder || !target) return
 				event.preventDefault()
 				const targetSlot = target.dataset.id
-				const fromSlot = event.dataTransfer.getData('text/plain')
+				const fromSlot =
+					dragSourceRef.current || event.dataTransfer.getData('text/plain')
 				if (!targetSlot || targetSlot === fromSlot) {
 					clearDropIndicator()
 					return
@@ -397,20 +589,25 @@ export function InventoryTable({
 				}
 			}}
 			onDropCapture={(event) => {
-				const fromSlot = event.dataTransfer.getData('text/plain')
+				const fromSlot =
+					dragSourceRef.current || event.dataTransfer.getData('text/plain')
 				const target = dropTargetRef.current
-				if (fromSlot && target) {
+				if (allowReorder && fromSlot && target) {
 					event.preventDefault()
-					onMoveItem(fromSlot, target.slot, target.position)
+					onMoveItem?.(fromSlot, target.slot, target.position)
 				}
 				clearDropIndicator()
+				clearDragSource()
 			}}
 			onDragLeave={(event) => {
 				if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
 					clearDropIndicator()
 				}
 			}}
-			onDragEndCapture={clearDropIndicator}
+			onDragEndCapture={() => {
+				clearDropIndicator()
+				clearDragSource()
+			}}
 			sx={(theme) => ({
 				display: 'flex',
 				position: 'relative',
@@ -452,6 +649,7 @@ export function InventoryTable({
 					boxSizing: 'border-box',
 					color: theme.palette.text.primary,
 					fontSize: 12,
+					alignItems: 'center',
 				},
 				'& .MuiDataGrid-cell[data-field="value"]': {
 					px: 0,
@@ -461,6 +659,12 @@ export function InventoryTable({
 				},
 				'& .MuiDataGrid-row:hover': {
 					bgcolor: `${theme.palette.surfaceRaised} !important`,
+				},
+				'& .MuiDataGrid-row.drag-source-selected': {
+					position: 'relative',
+					zIndex: 1,
+					outline: `2px solid ${theme.palette.primary.main}`,
+					outlineOffset: '-2px',
 				},
 				'& .MuiDataGrid-virtualScroller': {
 					bgcolor: theme.palette.background.paper,
@@ -489,6 +693,13 @@ export function InventoryTable({
 			<DataGrid
 				rows={rows}
 				columns={columns}
+				columnVisibilityModel={{
+					value: !loadoutMode,
+					remove: allowRemove,
+				}}
+				getRowClassName={({ id }) =>
+					String(id) === selectedDragSlot ? 'drag-source-selected' : ''
+				}
 				disableColumnResize={false}
 				disableColumnMenu
 				disableColumnFilter

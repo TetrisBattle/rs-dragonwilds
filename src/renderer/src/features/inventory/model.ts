@@ -1,3 +1,4 @@
+import { getItemMaxStack } from './itemNames'
 import type {
 	EditableItemField,
 	InventoryEntry,
@@ -43,6 +44,141 @@ export function getPlayerInventory(save: SaveData | null) {
 	return getInventoryAt(save, 'Inventory')
 }
 
+export function getLoadout(save: SaveData | null): Record<string, unknown> {
+	const rootLoadout = save?.Loadout
+	const progress = save?.GameProgress
+	const progressLoadout =
+		progress && typeof progress === 'object' && !Array.isArray(progress)
+			? (progress as Record<string, unknown>).Loadout
+			: undefined
+	const loadout = isRecord(rootLoadout) ? rootLoadout : progressLoadout
+	return isRecord(loadout) ? loadout : {}
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+export function getLoadoutSlotCount(loadout: Record<string, unknown>): number {
+	const maxSlotIndex = loadout.MaxSlotIndex
+	if (typeof maxSlotIndex === 'number' && Number.isSafeInteger(maxSlotIndex)) {
+		return Math.max(0, maxSlotIndex + 1)
+	}
+
+	return Object.keys(loadout)
+		.map(Number)
+		.filter((slot) => Number.isSafeInteger(slot) && slot >= 0)
+		.reduce((maxSlot, slot) => Math.max(maxSlot, slot + 1), 0)
+}
+
+export function getLoadoutEntries(save: SaveData | null): InventoryEntry[] {
+	const loadout = getLoadout(save)
+	const inventory = getPlayerInventory(save)
+	return Object.entries(loadout)
+		.flatMap(([slot, value]): InventoryEntry[] => {
+			if (!['0', '1', '2', '3', '4', '11'].includes(slot)) return []
+			if (isInventoryItem(value)) return [[slot, value]]
+			if (
+				typeof value !== 'object' ||
+				value === null ||
+				!('PlayerInventoryItemIndex' in value) ||
+				typeof value.PlayerInventoryItemIndex !== 'number' ||
+				!Number.isSafeInteger(value.PlayerInventoryItemIndex) ||
+				value.PlayerInventoryItemIndex < 0
+			) {
+				return []
+			}
+
+			const item = inventory[String(value.PlayerInventoryItemIndex)]
+			return isInventoryItem(item) ? [[slot, item]] : []
+		})
+		.sort(([left], [right]) => Number(left) - Number(right))
+}
+
+export function updateLoadoutItem(
+	save: SaveData,
+	slot: string,
+	field: EditableItemField,
+	value: number | null,
+): SaveData {
+	const loadout = getLoadout(save)
+	const loadoutEntry = loadout[slot]
+	if (isInventoryItem(loadoutEntry)) {
+		if (save.Loadout === loadout) {
+			return {
+				...save,
+				Loadout: {
+					...loadout,
+					[slot]: updateItemFields(loadoutEntry, field, value),
+				},
+			}
+		}
+
+		const progress = save.GameProgress
+		if (!isRecord(progress)) return save
+		return {
+			...save,
+			GameProgress: {
+				...progress,
+				Loadout: {
+					...loadout,
+					[slot]: updateItemFields(loadoutEntry, field, value),
+				},
+			},
+		}
+	}
+
+	if (
+		typeof loadoutEntry !== 'object' ||
+		loadoutEntry === null ||
+		!('PlayerInventoryItemIndex' in loadoutEntry) ||
+		typeof loadoutEntry.PlayerInventoryItemIndex !== 'number' ||
+		!Number.isSafeInteger(loadoutEntry.PlayerInventoryItemIndex) ||
+		loadoutEntry.PlayerInventoryItemIndex < 0
+	) {
+		return save
+	}
+
+	const progress = save.GameProgress
+	if (!progress || typeof progress !== 'object' || Array.isArray(progress)) {
+		return save
+	}
+	const gameProgress = progress as Record<string, unknown>
+	const inventory = gameProgress.Inventory
+	if (!inventory || typeof inventory !== 'object' || Array.isArray(inventory)) {
+		return save
+	}
+	const playerInventory = inventory as Record<string, unknown>
+	const inventorySlot = String(loadoutEntry.PlayerInventoryItemIndex)
+	const inventoryItem = playerInventory[inventorySlot]
+	if (!isInventoryItem(inventoryItem)) return save
+
+	return {
+		...save,
+		GameProgress: {
+			...gameProgress,
+			Inventory: {
+				...playerInventory,
+				[inventorySlot]: updateItemFields(inventoryItem, field, value),
+			},
+		},
+	}
+}
+
+function updateItemFields(
+	item: InventoryItem,
+	field: EditableItemField,
+	value: number | null,
+): InventoryItem {
+	const updatedItem = { ...item }
+	if (value === null || value === 0) {
+		delete updatedItem[field]
+	} else {
+		updatedItem[field] = value
+	}
+	return updatedItem
+}
+
 export function getInventoryEntries(
 	inventory: Record<string, unknown>,
 ): InventoryEntry[] {
@@ -81,26 +217,51 @@ export function initializeMissingItemCounts(save: SaveData): {
 
 	const gameProgress = progress as Record<string, unknown>
 	const personalInventory = gameProgress.PersonalInventory
+	let changed = false
+	let updatedPersonalInventory = personalInventory
 	if (
-		!personalInventory ||
-		typeof personalInventory !== 'object' ||
-		Array.isArray(personalInventory)
+		personalInventory &&
+		typeof personalInventory === 'object' &&
+		!Array.isArray(personalInventory)
 	) {
-		return { save, changed: false }
+		updatedPersonalInventory = Object.fromEntries(
+			Object.entries(personalInventory as Record<string, unknown>).map(
+				([slot, value]) => {
+					if (!isInventoryItem(value)) return [slot, value]
+					if (typeof value.Count === 'number') return [slot, value]
+
+					changed = true
+					return [slot, { ...value, Count: 1 }]
+				},
+			),
+		)
 	}
 
-	const inventory = personalInventory as Record<string, unknown>
-	let changed = false
-	const updatedInventory = Object.fromEntries(
-		Object.entries(inventory).map(([slot, value]) => {
-			if (!isInventoryItem(value)) return [slot, value]
+	const currentInventory = gameProgress.Inventory
+	let updatedInventory = currentInventory
+	if (
+		currentInventory &&
+		typeof currentInventory === 'object' &&
+		!Array.isArray(currentInventory)
+	) {
+		updatedInventory = Object.fromEntries(
+			Object.entries(currentInventory as Record<string, unknown>).map(
+				([slot, value]) => {
+					if (
+						!isInventoryItem(value) ||
+						typeof value.Count !== 'number' ||
+						getItemMaxStack(value.ItemData, value) !== 1 ||
+						value.Count === 1
+					) {
+						return [slot, value]
+					}
 
-			if (typeof value.Count === 'number') return [slot, value]
-
-			changed = true
-			return [slot, { ...value, Count: 1 }]
-		}),
-	)
+					changed = true
+					return [slot, { ...value, Count: 1 }]
+				},
+			),
+		)
+	}
 
 	if (!changed) return { save, changed }
 
@@ -109,7 +270,12 @@ export function initializeMissingItemCounts(save: SaveData): {
 			...save,
 			GameProgress: {
 				...gameProgress,
-				PersonalInventory: updatedInventory,
+				...(updatedPersonalInventory !== personalInventory && {
+					PersonalInventory: updatedPersonalInventory,
+				}),
+				...(updatedInventory !== currentInventory && {
+					Inventory: updatedInventory,
+				}),
 			},
 		},
 		changed,

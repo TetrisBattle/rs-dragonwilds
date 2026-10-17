@@ -11,7 +11,9 @@ An Electron application with React and TypeScript
 - `src/preload/` exposes the typed, limited API to the renderer.
 - `src/shared/save.ts` defines save-related types used across processes.
 - `src/renderer/src/features/saves/` contains character selection and save-editor state.
-- `src/renderer/src/features/inventory/` contains personal chest data helpers and UI.
+- `src/renderer/src/features/inventory/` contains personal chest, inventory, and loadout data helpers and UI.
+- The inventory table displays and edits equipment power levels using each item's base level and `NumUpgradesApplied`.
+- The Inventory view's Loadout category displays equipped items and lets you edit their durability and power level.
 - `src/renderer/src/components/` contains shared application-level UI.
 
 ## Project Setup

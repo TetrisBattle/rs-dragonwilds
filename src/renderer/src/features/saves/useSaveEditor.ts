@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { SaveData, SaveSummary } from '../../../../shared/save'
 import {
 	addPersonalChestItem as addPersonalChestItemToSave,
+	updateLoadoutItem as applyLoadoutItemUpdate,
 	updatePersonalChestItem as applyPersonalChestItemUpdate,
 	updatePlayerInventoryItem as applyPlayerInventoryItemUpdate,
 	initializeMissingItemCounts,
@@ -145,6 +146,17 @@ export function useSaveEditor() {
 		[],
 	)
 
+	const updateLoadoutItem = useCallback(
+		(slot: string, field: EditableItemField, value: number | null) => {
+			setSaveData((current) =>
+				current ? applyLoadoutItemUpdate(current, slot, field, value) : current,
+			)
+			setDirty(true)
+			setNotice(null)
+		},
+		[],
+	)
+
 	const addItem = useCallback((itemId: string) => {
 		setSaveData((current) =>
 			current ? addPersonalChestItemToSave(current, itemId) : current,
@@ -243,6 +255,7 @@ export function useSaveEditor() {
 		closePendingAction,
 		updateItem,
 		updatePlayerInventoryItem,
+		updateLoadoutItem,
 		addItem,
 		removeItem,
 		removePlayerInventoryItem,

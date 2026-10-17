@@ -73,6 +73,7 @@ export const App = () => {
 						onCloseNotice={editor.closeNotice}
 						onUpdateItem={editor.updateItem}
 						onUpdateInventoryItem={editor.updatePlayerInventoryItem}
+						onUpdateLoadoutItem={editor.updateLoadoutItem}
 						onAddItem={editor.addItem}
 						onRemoveItem={editor.removeItem}
 						onRemoveInventoryItem={editor.removePlayerInventoryItem}
