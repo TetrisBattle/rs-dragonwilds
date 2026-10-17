@@ -2,9 +2,10 @@ import { useCallback, useEffect, useState } from 'react'
 import type { SaveData, SaveSummary } from '../../../../shared/save'
 import {
 	addPersonalChestItem as addPersonalChestItemToSave,
-	updatePersonalChestItemData as applyPersonalChestItemDataUpdate,
 	updatePersonalChestItem as applyPersonalChestItemUpdate,
 	initializeMissingItemCounts,
+	movePersonalChestItem as movePersonalChestItemInSave,
+	removePersonalChestItem as removePersonalChestItemFromSave,
 } from '../inventory/model'
 import type { EditableItemField } from '../inventory/types'
 
@@ -13,6 +14,8 @@ function getErrorMessage(error: unknown): string {
 		? error.message
 		: 'An unexpected error occurred.'
 }
+
+type PendingAction = { type: 'open'; save: SaveSummary } | { type: 'refresh' }
 
 export function useSaveEditor() {
 	const [saves, setSaves] = useState<SaveSummary[]>([])
@@ -24,17 +27,20 @@ export function useSaveEditor() {
 	const [dirty, setDirty] = useState(false)
 	const [error, setError] = useState<string | null>(null)
 	const [notice, setNotice] = useState<string | null>(null)
-	const [pendingSave, setPendingSave] = useState<SaveSummary | null>(null)
+	const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
 
 	const refreshSaves = useCallback(async () => {
 		setLoadingSaves(true)
 		setError(null)
 		try {
-			setSaves(await window.api.listSaves())
+			const nextSaves = await window.api.listSaves()
+			setSaves(nextSaves)
+			return nextSaves
 		} catch (loadError) {
 			setError(
 				`Could not read the Dragonwilds save folder. ${getErrorMessage(loadError)}`,
 			)
+			return null
 		} finally {
 			setLoadingSaves(false)
 		}
@@ -68,7 +74,7 @@ export function useSaveEditor() {
 		(save: SaveSummary) => {
 			if (save.fileName === selectedFile) return
 			if (dirty) {
-				setPendingSave(save)
+				setPendingAction({ type: 'open', save })
 				return
 			}
 			void openSave(save)
@@ -76,10 +82,39 @@ export function useSaveEditor() {
 		[dirty, openSave, selectedFile],
 	)
 
-	const confirmPendingSave = useCallback(() => {
-		if (pendingSave) void openSave(pendingSave)
-		setPendingSave(null)
-	}, [openSave, pendingSave])
+	const refreshSelectedSave = useCallback(async () => {
+		const refreshedSaves = await refreshSaves()
+		if (!selectedFile || !refreshedSaves) return
+
+		const selectedSave = refreshedSaves.find(
+			(save) => save.fileName === selectedFile,
+		)
+		if (!selectedSave) {
+			setError(`Could not find ${selectedFile} in the Dragonwilds save folder.`)
+			return
+		}
+
+		await openSave(selectedSave)
+	}, [openSave, refreshSaves, selectedFile])
+
+	const requestRefresh = useCallback(() => {
+		if (dirty && selectedFile) {
+			setPendingAction({ type: 'refresh' })
+			return
+		}
+		void refreshSelectedSave()
+	}, [dirty, refreshSelectedSave, selectedFile])
+
+	const confirmPendingAction = useCallback(() => {
+		const action = pendingAction
+		setPendingAction(null)
+		if (action?.type === 'open') void openSave(action.save)
+		if (action?.type === 'refresh') void refreshSelectedSave()
+	}, [openSave, pendingAction, refreshSelectedSave])
+
+	const closePendingAction = useCallback(() => {
+		setPendingAction(null)
+	}, [])
 
 	const updateItem = useCallback(
 		(slot: string, field: EditableItemField, value: number | null) => {
@@ -94,23 +129,39 @@ export function useSaveEditor() {
 		[],
 	)
 
-	const changeItemType = useCallback((slot: string, itemId: string) => {
-		setSaveData((current) =>
-			current
-				? applyPersonalChestItemDataUpdate(current, slot, itemId)
-				: current,
-		)
-		setDirty(true)
-		setNotice(null)
-	}, [])
-
 	const addItem = useCallback((itemId: string) => {
 		setSaveData((current) =>
 			current ? addPersonalChestItemToSave(current, itemId) : current,
 		)
 		setDirty(true)
-		setNotice('Item added to the next available slot. Save changes to keep it.')
+		setNotice(null)
 	}, [])
+
+	const removeItem = useCallback((slot: string) => {
+		setSaveData((current) =>
+			current ? removePersonalChestItemFromSave(current, slot) : current,
+		)
+		setDirty(true)
+		setNotice('Item removed. Save changes to keep it.')
+	}, [])
+
+	const moveItem = useCallback(
+		(
+			fromSlot: string,
+			toSlot: string,
+			position: 'before' | 'after' = 'before',
+		) => {
+			if (fromSlot === toSlot) return
+			setSaveData((current) =>
+				current
+					? movePersonalChestItemInSave(current, fromSlot, toSlot, position)
+					: current,
+			)
+			setDirty(true)
+			setNotice(null)
+		},
+		[],
+	)
 
 	const saveChanges = useCallback(async () => {
 		if (!saveData || !selectedFile) return
@@ -141,14 +192,17 @@ export function useSaveEditor() {
 		dirty,
 		error,
 		notice,
-		pendingSave,
+		pendingSave: pendingAction?.type === 'open' ? pendingAction.save : null,
+		pendingRefresh: pendingAction?.type === 'refresh',
 		refreshSaves,
+		requestRefresh,
 		selectSave,
-		confirmPendingSave,
-		closePendingSave: () => setPendingSave(null),
+		confirmPendingAction,
+		closePendingAction,
 		updateItem,
-		changeItemType,
 		addItem,
+		removeItem,
+		moveItem,
 		saveChanges,
 		closeError: () => setError(null),
 		closeNotice: () => setNotice(null),

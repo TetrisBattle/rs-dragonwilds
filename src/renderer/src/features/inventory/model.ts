@@ -120,26 +120,100 @@ export function updatePersonalChestItem(
 	}
 }
 
-export function updatePersonalChestItemData(
+export function removePersonalChestItem(
 	save: SaveData,
 	slot: string,
-	itemId: string,
 ): SaveData {
 	const progress = save.GameProgress as Record<string, unknown>
 	const personalInventory = progress.PersonalInventory as Record<
 		string,
 		unknown
 	>
-	const item = personalInventory[slot] as PersonalChestItem
+	const updatedInventory = { ...personalInventory }
+	delete updatedInventory[slot]
+	const highestOccupiedSlot = Math.max(
+		-1,
+		...Object.keys(updatedInventory)
+			.map(Number)
+			.filter((index) => Number.isSafeInteger(index) && index >= 0),
+	)
+	updatedInventory.MaxSlotIndex = highestOccupiedSlot
 
 	return {
 		...save,
 		GameProgress: {
 			...progress,
-			PersonalInventory: {
-				...personalInventory,
-				[slot]: { ...item, ItemData: itemId },
-			},
+			PersonalInventory: updatedInventory,
+		},
+	}
+}
+
+export function movePersonalChestItem(
+	save: SaveData,
+	fromSlot: string,
+	toSlot: string,
+	position: 'before' | 'after' = 'before',
+): SaveData {
+	const sourceIndex = Number(fromSlot)
+	const targetIndex = Number(toSlot) + (position === 'after' ? 1 : 0)
+	if (
+		!Number.isSafeInteger(sourceIndex) ||
+		!Number.isSafeInteger(targetIndex) ||
+		sourceIndex < 0 ||
+		targetIndex < 0 ||
+		sourceIndex === targetIndex
+	) {
+		return save
+	}
+
+	const progress = save.GameProgress as Record<string, unknown>
+	const personalInventory = progress.PersonalInventory as Record<
+		string,
+		unknown
+	>
+	if (!isPersonalChestItem(personalInventory[String(sourceIndex)])) return save
+
+	const highestSlot = Math.max(
+		sourceIndex,
+		targetIndex,
+		...Object.keys(personalInventory)
+			.map(Number)
+			.filter((index) => Number.isSafeInteger(index) && index >= 0),
+	)
+	const slots = Array.from(
+		{ length: highestSlot + 1 },
+		(_, index) => personalInventory[String(index)],
+	)
+	const [movedItem] = slots.splice(sourceIndex, 1)
+	slots.splice(
+		targetIndex > sourceIndex ? targetIndex - 1 : targetIndex,
+		0,
+		movedItem,
+	)
+
+	const updatedInventory = { ...personalInventory }
+	for (const key of Object.keys(updatedInventory)) {
+		const index = Number(key)
+		if (Number.isSafeInteger(index) && index >= 0) {
+			delete updatedInventory[key]
+		}
+	}
+
+	slots.forEach((item, index) => {
+		if (item !== undefined) updatedInventory[String(index)] = item
+	})
+	updatedInventory.MaxSlotIndex = Math.max(
+		-1,
+		...slots
+			.map((item, index) => (isPersonalChestItem(item) ? index : -1))
+			.filter((index) => index >= 0),
+	)
+
+	return {
+		...save,
+		GameProgress: {
+			...progress,
+			PersonalInventory: updatedInventory,
 		},
 	}
 }

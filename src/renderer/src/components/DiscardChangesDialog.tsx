@@ -11,6 +11,7 @@ import type { SaveSummary } from '../../../shared/save'
 interface DiscardChangesDialogProps {
 	currentCharacter?: string
 	pendingSave: SaveSummary | null
+	pendingRefresh: boolean
 	onClose: () => void
 	onConfirm: () => void
 }
@@ -18,12 +19,13 @@ interface DiscardChangesDialogProps {
 export function DiscardChangesDialog({
 	currentCharacter,
 	pendingSave,
+	pendingRefresh,
 	onClose,
 	onConfirm,
 }: DiscardChangesDialogProps) {
 	return (
 		<Dialog
-			open={pendingSave !== null}
+			open={pendingSave !== null || pendingRefresh}
 			onClose={onClose}
 			slotProps={{
 				paper: {
@@ -44,9 +46,9 @@ export function DiscardChangesDialog({
 						fontSize: 13,
 					})}
 				>
-					Your edits to {currentCharacter ?? 'this save'} have not been saved.
-					Open {pendingSave?.characterName ?? 'the selected character'} without
-					saving?
+					{pendingRefresh
+						? `Your edits to ${currentCharacter ?? 'this save'} have not been saved. Refresh it from disk and discard those changes?`
+						: `Your edits to ${currentCharacter ?? 'this save'} have not been saved. Open ${pendingSave?.characterName ?? 'the selected character'} without saving?`}
 				</DialogContentText>
 			</DialogContent>
 			<DialogActions sx={{ px: 3, pb: 2 }}>
@@ -65,7 +67,7 @@ export function DiscardChangesDialog({
 						fontWeight: 700,
 					})}
 				>
-					Discard and open
+					{pendingRefresh ? 'Discard and refresh' : 'Discard and open'}
 				</Button>
 			</DialogActions>
 		</Dialog>

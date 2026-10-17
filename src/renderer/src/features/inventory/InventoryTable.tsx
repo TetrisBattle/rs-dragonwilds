@@ -1,21 +1,16 @@
+import DeleteIcon from '@mui/icons-material/Delete'
 import {
 	Box,
-	MenuItem,
+	IconButton,
 	Paper,
-	Select,
 	Stack,
-	Table,
-	TableBody,
-	TableCell,
-	TableContainer,
-	TableHead,
-	TableRow,
 	TextField,
 	Typography,
 } from '@mui/material'
-import { useState } from 'react'
+import { DataGrid, type GridColDef } from '@mui/x-data-grid'
+import { useRef, useState } from 'react'
 import { getItemIcon } from './itemIcons'
-import { getItemName, getKnownItems } from './itemNames'
+import { getItemName } from './itemNames'
 import type { EditableItemField, PersonalChestEntry } from './types'
 
 interface PersonalChestTableProps {
@@ -25,8 +20,30 @@ interface PersonalChestTableProps {
 		field: EditableItemField,
 		value: number | null,
 	) => void
-	onChangeItemType: (slot: string, itemId: string) => void
+	onRemoveItem: (slot: string) => void
+	onMoveItem: (
+		fromSlot: string,
+		toSlot: string,
+		position?: 'before' | 'after',
+	) => void
+	showEmptySlots: boolean
 }
+
+interface PersonalChestGridRow {
+	id: string
+	slot: string
+	itemName: string
+	itemIcon: string | undefined
+	isKnownItem: boolean
+	isEmpty: boolean
+	field: EditableItemField | null
+	value: string | null
+	onQuantityChange?: (field: EditableItemField, value: string) => void
+	onQuantityBlur?: (field: EditableItemField, value: string) => void
+	onRemove?: () => void
+}
+
+const PERSONAL_CHEST_SLOT_COUNT = 20
 
 function getEditableField(
 	item: PersonalChestEntry[1],
@@ -36,289 +53,455 @@ function getEditableField(
 	return 'Count'
 }
 
+function renderSlotCell(row: PersonalChestGridRow) {
+	return (
+		<Stack
+			sx={{
+				width: '100%',
+				height: '100%',
+				justifyContent: 'center',
+				cursor: row.isEmpty ? 'default' : 'grab',
+			}}
+		>
+			<Typography
+				sx={{
+					color: 'text.secondary',
+					fontSize: 11,
+					fontFamily: 'Consolas, monospace',
+					lineHeight: 1,
+				}}
+			>
+				{row.slot.padStart(2, '0')}
+			</Typography>
+		</Stack>
+	)
+}
+
+function renderItemCell(row: PersonalChestGridRow) {
+	return (
+		<Stack
+			direction='row'
+			spacing={1}
+			draggable={!row.isEmpty}
+			onDragStart={(event) => {
+				event.dataTransfer.setData('text/plain', row.slot)
+				event.dataTransfer.effectAllowed = 'move'
+			}}
+			sx={{
+				alignItems: 'center',
+				minWidth: 0,
+				width: '100%',
+				height: '100%',
+				cursor: row.isEmpty ? 'default' : 'grab',
+			}}
+		>
+			{row.itemIcon && (
+				<Box
+					component='img'
+					src={row.itemIcon}
+					alt=''
+					aria-hidden='true'
+					sx={{
+						width: 30,
+						height: 30,
+						objectFit: 'contain',
+						flexShrink: 0,
+					}}
+				/>
+			)}
+			<Typography
+				sx={(theme) => ({
+					flex: 1,
+					minWidth: 0,
+					color: row.isEmpty
+						? theme.palette.textSubtle
+						: theme.palette.textItem,
+					fontFamily: row.isKnownItem ? 'inherit' : 'Consolas, monospace',
+					fontSize: 11,
+					fontStyle: row.isEmpty ? 'italic' : 'normal',
+					overflow: 'hidden',
+					textOverflow: 'ellipsis',
+					whiteSpace: 'nowrap',
+				})}
+			>
+				{row.isEmpty ? 'Empty slot' : row.itemName}
+			</Typography>
+		</Stack>
+	)
+}
+
+function renderQuantityCell(row: PersonalChestGridRow) {
+	if (row.isEmpty) return null
+	if (!row.field || row.value === null) {
+		return (
+			<Typography
+				sx={{ color: 'textSubtle', fontSize: 10, textAlign: 'center' }}
+			>
+				Unique item
+			</Typography>
+		)
+	}
+
+	const field = row.field
+	return (
+		<Stack
+			direction='row'
+			sx={{
+				width: '100%',
+				height: '100%',
+				alignItems: 'center',
+				justifyContent: 'center',
+			}}
+		>
+			<TextField
+				value={row.value}
+				onChange={(event) => row.onQuantityChange?.(field, event.target.value)}
+				onBlur={(event) => row.onQuantityBlur?.(field, event.target.value)}
+				slotProps={{
+					htmlInput: {
+						'aria-label': field,
+					},
+				}}
+				fullWidth
+				sx={(theme) => ({
+					width: '100%',
+					minWidth: 0,
+					'& .MuiOutlinedInput-root': {
+						height: 32,
+						boxSizing: 'border-box',
+						bgcolor: theme.palette.surfaceInput,
+						color: theme.palette.text.primary,
+						fontSize: 12,
+						'& fieldset': { borderColor: theme.palette.divider },
+						'&:hover:not(.Mui-focused) fieldset': {
+							borderColor: theme.palette.divider,
+						},
+					},
+					'& .MuiInputBase-input': {
+						boxSizing: 'border-box',
+						height: '100%',
+						padding: '0 8px',
+						textAlign: 'center',
+					},
+				})}
+			/>
+		</Stack>
+	)
+}
+
+const columns: GridColDef<PersonalChestGridRow>[] = [
+	{
+		field: 'slot',
+		headerName: 'SLOT',
+		width: 90,
+		minWidth: 60,
+		resizable: true,
+		sortable: false,
+		renderCell: ({ row }) => renderSlotCell(row),
+	},
+	{
+		field: 'itemName',
+		headerName: 'ITEM',
+		flex: 1,
+		minWidth: 200,
+		resizable: true,
+		sortable: false,
+		renderCell: ({ row }) => renderItemCell(row),
+	},
+	{
+		field: 'value',
+		headerName: 'QUANTITY',
+		width: 190,
+		minWidth: 120,
+		resizable: true,
+		sortable: false,
+		align: 'center',
+		headerAlign: 'center',
+		renderCell: ({ row }) => renderQuantityCell(row),
+	},
+	{
+		field: 'remove',
+		headerName: 'REMOVE',
+		width: 90,
+		minWidth: 70,
+		resizable: true,
+		sortable: false,
+		align: 'center',
+		headerAlign: 'center',
+		renderCell: ({ row }) =>
+			row.isEmpty ? null : (
+				<IconButton
+					color='error'
+					size='small'
+					aria-label={`Remove ${row.itemName} from slot ${row.slot}`}
+					onClick={row.onRemove}
+					sx={{ fontSize: 18 }}
+				>
+					<DeleteIcon fontSize='small' />
+				</IconButton>
+			),
+	},
+]
+
+function NoRowsOverlay() {
+	return (
+		<Stack
+			sx={{
+				height: '100%',
+				alignItems: 'center',
+				justifyContent: 'center',
+				color: 'text.secondary',
+				fontSize: 14,
+			}}
+		>
+			No matching personal chest items.
+		</Stack>
+	)
+}
+
 export function PersonalChestTable({
 	entries,
 	onUpdateItem,
-	onChangeItemType,
+	onRemoveItem,
+	onMoveItem,
+	showEmptySlots,
 }: PersonalChestTableProps) {
 	const [draftValues, setDraftValues] = useState<Record<string, string>>({})
-	const knownItems = getKnownItems()
+	const dropIndicatorRef = useRef<HTMLDivElement>(null)
+	const dropTargetRef = useRef<{
+		slot: string
+		position: 'before' | 'after'
+	} | null>(null)
+	const clearDropIndicator = () => {
+		dropTargetRef.current = null
+		if (dropIndicatorRef.current) {
+			dropIndicatorRef.current.style.visibility = 'hidden'
+		}
+	}
+
+	const occupiedRows = entries.map(([slot, item]): PersonalChestGridRow => {
+		const countDraftKey = `${slot}:Count`
+		const durabilityDraftKey = `${slot}:Durability`
+		const field = Object.hasOwn(draftValues, countDraftKey)
+			? 'Count'
+			: Object.hasOwn(draftValues, durabilityDraftKey)
+				? 'Durability'
+				: getEditableField(item)
+		const itemName = getItemName(item.ItemData)
+		const itemIcon = getItemIcon(item.ItemData)
+
+		return {
+			id: slot,
+			slot,
+			itemName: itemName ?? item.ItemData,
+			itemIcon,
+			isKnownItem: itemName !== undefined,
+			isEmpty: false,
+			field,
+			value: field
+				? (draftValues[`${slot}:${field}`] ?? item[field]?.toString() ?? '')
+				: null,
+			onQuantityChange: (quantityField, inputValue) => {
+				setDraftValues((current) => ({
+					...current,
+					[`${slot}:${quantityField}`]: inputValue,
+				}))
+				if (inputValue === '') {
+					onUpdateItem(slot, quantityField, null)
+					return
+				}
+
+				const nextValue = Number(inputValue)
+				if (Number.isSafeInteger(nextValue) && nextValue >= 0) {
+					onUpdateItem(slot, quantityField, nextValue === 0 ? null : nextValue)
+				}
+			},
+			onQuantityBlur: (quantityField, inputValue) => {
+				const key = `${slot}:${quantityField}`
+				const nextValue = Number(inputValue)
+				if (
+					inputValue === '' ||
+					!Number.isSafeInteger(nextValue) ||
+					nextValue <= 0
+				) {
+					onUpdateItem(slot, quantityField, null)
+				} else {
+					onUpdateItem(slot, quantityField, nextValue)
+				}
+				setDraftValues((current) => {
+					const next = { ...current }
+					delete next[key]
+					return next
+				})
+			},
+			onRemove: () => {
+				setDraftValues((current) => {
+					const next = { ...current }
+					delete next[countDraftKey]
+					delete next[durabilityDraftKey]
+					return next
+				})
+				onRemoveItem(slot)
+			},
+		}
+	})
+	const occupiedSlots = new Set(occupiedRows.map((row) => row.slot))
+	const emptyRows: PersonalChestGridRow[] = Array.from(
+		{ length: PERSONAL_CHEST_SLOT_COUNT },
+		(_, slot) => String(slot),
+	)
+		.filter((slot) => !occupiedSlots.has(slot))
+		.map((slot) => ({
+			id: slot,
+			slot,
+			itemName: '',
+			itemIcon: undefined,
+			isKnownItem: true,
+			isEmpty: true,
+			field: null,
+			value: null,
+		}))
+	const rows = [...occupiedRows, ...(showEmptySlots ? emptyRows : [])].sort(
+		(left, right) => Number(left.slot) - Number(right.slot),
+	)
 
 	return (
-		<TableContainer
-			component={Paper}
+		<Paper
 			elevation={0}
+			onDragOverCapture={(event) => {
+				const target = (event.target as HTMLElement).closest<HTMLElement>(
+					'.MuiDataGrid-row',
+				)
+				if (!target) return
+				event.preventDefault()
+				const targetSlot = target.dataset.id
+				const fromSlot = event.dataTransfer.getData('text/plain')
+				if (!targetSlot || targetSlot === fromSlot) {
+					clearDropIndicator()
+					return
+				}
+				const bounds = target.getBoundingClientRect()
+				const nextDropTarget = {
+					slot: targetSlot,
+					position:
+						event.clientY < bounds.top + bounds.height / 2 ? 'before' : 'after',
+				} as const
+				dropTargetRef.current = nextDropTarget
+				if (dropIndicatorRef.current) {
+					const paperBounds = event.currentTarget.getBoundingClientRect()
+					const top =
+						bounds.top -
+						paperBounds.top +
+						event.currentTarget.clientTop +
+						(nextDropTarget.position === 'after' ? bounds.height : 0)
+					dropIndicatorRef.current.style.transform = `translateY(${top - 1}px)`
+					dropIndicatorRef.current.style.visibility = 'visible'
+				}
+			}}
+			onDropCapture={(event) => {
+				const fromSlot = event.dataTransfer.getData('text/plain')
+				const target = dropTargetRef.current
+				if (fromSlot && target) {
+					event.preventDefault()
+					onMoveItem(fromSlot, target.slot, target.position)
+				}
+				clearDropIndicator()
+			}}
+			onDragLeave={(event) => {
+				if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+					clearDropIndicator()
+				}
+			}}
+			onDragEndCapture={clearDropIndicator}
 			sx={(theme) => ({
-				maxHeight: 'calc(100vh - 350px)',
+				display: 'flex',
+				position: 'relative',
+				flex: 1,
 				minHeight: 220,
 				border: `1px solid ${theme.palette.divider}`,
 				borderRadius: 2.5,
 				bgcolor: theme.palette.background.paper,
-				'&::-webkit-scrollbar': { width: 8, height: 8 },
-				'&::-webkit-scrollbar-thumb': {
-					bgcolor: theme.palette.scrollbarThumb,
-					borderRadius: 10,
+				overflow: 'hidden',
+				'& .MuiDataGrid-root': {
+					border: 0,
+					borderRadius: 0,
+				},
+				'& .MuiDataGrid-columnHeaders': {
+					bgcolor: theme.palette.surfaceHeader,
+					color: theme.palette.text.secondary,
+					borderBottom: `1px solid ${theme.palette.divider}`,
+					fontSize: 10,
+					fontWeight: 700,
+					letterSpacing: '0.12em',
+					textTransform: 'uppercase',
+				},
+				'& .MuiDataGrid-columnHeader': {
+					outline: 'none',
+					'&:focus': { outline: 'none' },
+				},
+				'& .MuiDataGrid-columnHeaderTitle': {
+					fontWeight: 700,
+					lineHeight: 1.2,
+				},
+				'& .MuiDataGrid-columnSeparator': {
+					color: theme.palette.divider,
+					opacity: 1,
+				},
+				'& .MuiDataGrid-cell': {
+					borderColor: theme.palette.divider,
+					outline: 'none',
+					py: 0,
+					boxSizing: 'border-box',
+					color: theme.palette.text.primary,
+					fontSize: 12,
+				},
+				'& .MuiDataGrid-cell[data-field="value"]': {
+					px: 0,
+				},
+				'& .MuiDataGrid-row': {
+					bgcolor: theme.palette.background.paper,
+				},
+				'& .MuiDataGrid-row:hover': {
+					bgcolor: `${theme.palette.surfaceRaised} !important`,
+				},
+				'& .MuiDataGrid-virtualScroller': {
+					bgcolor: theme.palette.background.paper,
+				},
+				'& .MuiDataGrid-scrollbar': {
+					scrollbarColor: `${theme.palette.scrollbarThumb} transparent`,
 				},
 			})}
 		>
-			<Table stickyHeader size='small'>
-				<TableHead>
-					<TableRow>
-						<TableCell
-							sx={(theme) => ({
-								width: 90,
-								bgcolor: theme.palette.surfaceRaised,
-								color: theme.palette.text.secondary,
-								borderColor: theme.palette.divider,
-								fontSize: 10,
-								fontWeight: 700,
-								letterSpacing: 1,
-							})}
-						>
-							SLOT
-						</TableCell>
-						<TableCell
-							sx={(theme) => ({
-								bgcolor: theme.palette.surfaceRaised,
-								color: theme.palette.text.secondary,
-								borderColor: theme.palette.divider,
-								fontSize: 10,
-								fontWeight: 700,
-								letterSpacing: 1,
-							})}
-						>
-							ITEM REFERENCE
-						</TableCell>
-						<TableCell
-							align='right'
-							sx={(theme) => ({
-								width: 190,
-								bgcolor: theme.palette.surfaceRaised,
-								color: theme.palette.text.secondary,
-								borderColor: theme.palette.divider,
-								fontSize: 10,
-								fontWeight: 700,
-								letterSpacing: 1,
-							})}
-						>
-							QUANTITY / CONDITION
-						</TableCell>
-					</TableRow>
-				</TableHead>
-				<TableBody>
-					{entries.map(([slot, item]) => {
-						const countDraftKey = `${slot}:Count`
-						const durabilityDraftKey = `${slot}:Durability`
-						const field = Object.hasOwn(draftValues, countDraftKey)
-							? 'Count'
-							: Object.hasOwn(draftValues, durabilityDraftKey)
-								? 'Durability'
-								: getEditableField(item)
-						const value = field
-							? (draftValues[`${slot}:${field}`] ??
-								item[field]?.toString() ??
-								'')
-							: null
-						const itemName = getItemName(item.ItemData) ?? item.ItemData
-						const itemIcon = getItemIcon(item.ItemData)
-						return (
-							<TableRow
-								key={slot}
-								hover
-								sx={(theme) => ({
-									'&:last-child td': { borderBottom: 0 },
-									'&:hover': {
-										bgcolor: `${theme.palette.surfaceRaised} !important`,
-									},
-								})}
-							>
-								<TableCell
-									sx={(theme) => ({
-										color: theme.palette.text.secondary,
-										borderColor: theme.palette.divider,
-										fontSize: 11,
-										fontFamily: 'Consolas, monospace',
-									})}
-								>
-									{slot.padStart(2, '0')}
-								</TableCell>
-								<TableCell sx={{ borderColor: 'divider', minWidth: 200 }}>
-									<Stack
-										direction='row'
-										spacing={1}
-										sx={{ alignItems: 'center' }}
-									>
-										{itemIcon && (
-											<Box
-												component='img'
-												src={itemIcon}
-												alt=''
-												aria-hidden='true'
-												sx={{
-													width: 30,
-													height: 30,
-													objectFit: 'contain',
-													flexShrink: 0,
-												}}
-											/>
-										)}
-										<Select
-											value={item.ItemData}
-											onChange={(event) =>
-												onChangeItemType(slot, event.target.value)
-											}
-											size='small'
-											variant='standard'
-											disableUnderline
-											inputProps={{ 'aria-label': `Item in slot ${slot}` }}
-											sx={(theme) => ({
-												flex: 1,
-												minWidth: 0,
-												color: theme.palette.textItem,
-												fontFamily: getItemName(item.ItemData)
-													? 'inherit'
-													: 'Consolas, monospace',
-												fontSize: 11,
-												'& .MuiSelect-select': {
-													overflow: 'hidden',
-													textOverflow: 'ellipsis',
-												},
-											})}
-										>
-											{!getItemName(item.ItemData) && (
-												<MenuItem value={item.ItemData}>{itemName}</MenuItem>
-											)}
-											{knownItems.map((knownItem) => (
-												<MenuItem key={knownItem.id} value={knownItem.id}>
-													{knownItem.name}
-												</MenuItem>
-											))}
-										</Select>
-									</Stack>
-								</TableCell>
-								<TableCell
-									align='right'
-									sx={{ borderColor: 'divider', py: 0.65 }}
-								>
-									{field && value !== null ? (
-										<Stack
-											direction='row'
-											spacing={1}
-											sx={{
-												alignItems: 'center',
-												justifyContent: 'flex-end',
-											}}
-										>
-											<Typography
-												sx={{
-													color: 'text.secondary',
-													fontSize: 10,
-													minWidth: 58,
-													textAlign: 'right',
-												}}
-											>
-												{field === 'Count' ? 'Quantity' : 'Durability'}
-											</Typography>
-											<TextField
-												type='number'
-												value={value ?? ''}
-												onChange={(event) => {
-													const inputValue = event.target.value
-													setDraftValues((current) => ({
-														...current,
-														[`${slot}:${field}`]: inputValue,
-													}))
-													if (inputValue === '') {
-														onUpdateItem(slot, field, null)
-														return
-													}
-
-													const nextValue = Number(inputValue)
-													if (
-														Number.isSafeInteger(nextValue) &&
-														nextValue >= 0
-													) {
-														onUpdateItem(
-															slot,
-															field,
-															nextValue === 0 ? null : nextValue,
-														)
-													}
-												}}
-												onBlur={(event) => {
-													const key = `${slot}:${field}`
-													const inputValue = event.target.value
-													const nextValue = Number(inputValue)
-													if (
-														inputValue === '' ||
-														!Number.isSafeInteger(nextValue) ||
-														nextValue <= 0
-													) {
-														onUpdateItem(slot, field, null)
-													} else {
-														onUpdateItem(slot, field, nextValue)
-													}
-													setDraftValues((current) => {
-														const next = { ...current }
-														delete next[key]
-														return next
-													})
-												}}
-												slotProps={{
-													htmlInput: {
-														min: 0,
-														step: 1,
-														'aria-label': field,
-													},
-												}}
-												sx={(theme) => ({
-													width: 90,
-													'& input[type=number]': {
-														MozAppearance: 'textfield',
-													},
-													'& input[type=number]::-webkit-outer-spin-button, & input[type=number]::-webkit-inner-spin-button':
-														{
-															WebkitAppearance: 'none',
-															margin: 0,
-														},
-													'& .MuiOutlinedInput-root': {
-														height: 32,
-														bgcolor: theme.palette.surfaceInput,
-														color: theme.palette.text.primary,
-														fontSize: 12,
-														'& fieldset': {
-															borderColor: theme.palette.divider,
-														},
-													},
-												})}
-											/>
-										</Stack>
-									) : (
-										<Typography sx={{ color: 'textSubtle', fontSize: 10 }}>
-											Unique item
-										</Typography>
-									)}
-								</TableCell>
-							</TableRow>
-						)
-					})}
-					{entries.length === 0 && (
-						<TableRow>
-							<TableCell
-								colSpan={3}
-								align='center'
-								sx={{
-									py: 6,
-									color: 'text.secondary',
-									borderColor: 'divider',
-								}}
-							>
-								No matching personal chest items.
-							</TableCell>
-						</TableRow>
-					)}
-				</TableBody>
-			</Table>
-		</TableContainer>
+			<Box
+				ref={dropIndicatorRef}
+				aria-hidden='true'
+				sx={(theme) => ({
+					position: 'absolute',
+					zIndex: 5,
+					top: 0,
+					left: 0,
+					right: 0,
+					height: 2,
+					backgroundColor: theme.palette.primary.main,
+					pointerEvents: 'none',
+					visibility: 'hidden',
+					willChange: 'transform',
+				})}
+			/>
+			<DataGrid
+				rows={rows}
+				columns={columns}
+				disableColumnResize={false}
+				disableColumnMenu
+				disableColumnFilter
+				disableColumnSorting
+				disableRowSelectionOnClick
+				hideFooter
+				rowHeight={44}
+				columnHeaderHeight={36}
+				density='compact'
+				slots={{ noRowsOverlay: NoRowsOverlay }}
+			/>
+		</Paper>
 	)
 }

@@ -3,11 +3,13 @@ import {
 	Box,
 	Button,
 	CircularProgress,
+	FormControlLabel,
 	InputAdornment,
 	Menu,
 	MenuItem,
 	Paper,
 	Stack,
+	Switch,
 	TextField,
 	Typography,
 } from '@mui/material'
@@ -33,8 +35,13 @@ interface PersonalChestWorkspaceProps {
 		field: EditableItemField,
 		value: number | null,
 	) => void
-	onChangeItemType: (slot: string, itemId: string) => void
 	onAddItem: (itemId: string) => void
+	onRemoveItem: (slot: string) => void
+	onMoveItem: (
+		fromSlot: string,
+		toSlot: string,
+		position?: 'before' | 'after',
+	) => void
 }
 
 function filterPersonalChestEntries(
@@ -90,33 +97,6 @@ function EmptyCharacterState() {
 	)
 }
 
-function PersonalChestHelp() {
-	return (
-		<Paper
-			elevation={0}
-			sx={(theme) => ({
-				display: 'flex',
-				alignItems: 'center',
-				gap: 1.2,
-				p: 1.7,
-				mb: 2,
-				border: `1px solid ${theme.palette.divider}`,
-				borderRadius: 2.5,
-				bgcolor: theme.palette.background.paper,
-			})}
-		>
-			<Typography sx={{ color: 'primary.main', fontSize: 15 }}>i</Typography>
-			<Typography
-				sx={{ color: 'text.secondary', fontSize: 11, lineHeight: 1.5 }}
-			>
-				Mapped item IDs show friendly names; hover over a name to see its ID.
-				Unmapped items still show their ID. Close the game before editing to
-				avoid it overwriting your changes.
-			</Typography>
-		</Paper>
-	)
-}
-
 export function PersonalChestWorkspace({
 	selectedFile,
 	selectedSave,
@@ -127,10 +107,12 @@ export function PersonalChestWorkspace({
 	onCloseError,
 	onCloseNotice,
 	onUpdateItem,
-	onChangeItemType,
 	onAddItem,
+	onRemoveItem,
+	onMoveItem,
 }: PersonalChestWorkspaceProps) {
 	const [search, setSearch] = useState('')
+	const [showEmptySlots, setShowEmptySlots] = useState(true)
 	const [addItemSearch, setAddItemSearch] = useState('')
 	const [addMenuAnchor, setAddMenuAnchor] = useState<HTMLElement | null>(null)
 	const personalChest = useMemo(() => getPersonalChest(saveData), [saveData])
@@ -155,8 +137,28 @@ export function PersonalChestWorkspace({
 	)
 
 	return (
-		<Box sx={{ flex: 1, overflow: 'auto', px: { xs: 2, md: 4 }, py: 3.2 }}>
-			<Box sx={{ maxWidth: 1120, mx: 'auto' }}>
+		<Box
+			sx={{
+				flex: 1,
+				overflow: 'auto',
+				minHeight: 0,
+				display: 'flex',
+				flexDirection: 'column',
+				px: { xs: 2, md: 4 },
+				py: 3.2,
+			}}
+		>
+			<Box
+				sx={{
+					width: '100%',
+					maxWidth: 1120,
+					mx: 'auto',
+					flex: 1,
+					minHeight: 0,
+					display: 'flex',
+					flexDirection: 'column',
+				}}
+			>
 				{error && (
 					<Alert
 						severity='error'
@@ -219,18 +221,6 @@ export function PersonalChestWorkspace({
 								: 'Select a character save to inspect its items.'}
 						</Typography>
 					</Box>
-					{saveData && (
-						<Typography
-							sx={{
-								display: { xs: 'none', sm: 'block' },
-								color: 'text.secondary',
-								fontSize: 10,
-								textAlign: 'right',
-							}}
-						>
-							Unsaved edits are kept in memory until you save.
-						</Typography>
-					)}
 				</Stack>
 
 				{!selectedFile && !loadingFile ? (
@@ -241,7 +231,6 @@ export function PersonalChestWorkspace({
 					</Box>
 				) : (
 					<>
-						<PersonalChestHelp />
 						<Stack
 							direction={{ xs: 'column', sm: 'row' }}
 							spacing={1.5}
@@ -255,6 +244,23 @@ export function PersonalChestWorkspace({
 								{visibleEntries.length} of {allEntries.length} personal chest
 								items
 							</Typography>
+							<FormControlLabel
+								control={
+									<Switch
+										size='small'
+										checked={showEmptySlots}
+										onChange={(event) =>
+											setShowEmptySlots(event.target.checked)
+										}
+									/>
+								}
+								label='Show empty slots'
+								sx={{
+									mx: 0,
+									color: 'text.secondary',
+									'& .MuiFormControlLabel-label': { fontSize: 11 },
+								}}
+							/>
 							<Button
 								variant='outlined'
 								onClick={(event) => {
@@ -387,7 +393,9 @@ export function PersonalChestWorkspace({
 						<PersonalChestTable
 							entries={visibleEntries}
 							onUpdateItem={onUpdateItem}
-							onChangeItemType={onChangeItemType}
+							onRemoveItem={onRemoveItem}
+							onMoveItem={onMoveItem}
+							showEmptySlots={showEmptySlots}
 						/>
 					</>
 				)}

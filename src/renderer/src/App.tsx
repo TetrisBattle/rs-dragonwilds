@@ -31,7 +31,13 @@ export const App = () => {
 			/>
 
 			<Box
-				sx={{ display: 'flex', flex: 1, minWidth: 0, flexDirection: 'column' }}
+				sx={{
+					display: 'flex',
+					flex: 1,
+					minWidth: 0,
+					minHeight: 0,
+					flexDirection: 'column',
+				}}
 			>
 				<AppHeader
 					selectedSave={selectedSave}
@@ -39,7 +45,7 @@ export const App = () => {
 					saving={editor.saving}
 					dirty={editor.dirty}
 					hasSaveData={editor.saveData !== null}
-					onRefresh={() => void editor.refreshSaves()}
+					onRefresh={editor.requestRefresh}
 					onSave={() => void editor.saveChanges()}
 				/>
 
@@ -53,8 +59,9 @@ export const App = () => {
 					onCloseError={editor.closeError}
 					onCloseNotice={editor.closeNotice}
 					onUpdateItem={editor.updateItem}
-					onChangeItemType={editor.changeItemType}
 					onAddItem={editor.addItem}
+					onRemoveItem={editor.removeItem}
+					onMoveItem={editor.moveItem}
 				/>
 
 				<Box
@@ -70,12 +77,19 @@ export const App = () => {
 						bgcolor: theme.palette.surfaceHeader,
 					})}
 				>
-					<Typography sx={(theme) => ({ color: theme.palette.text.secondary, fontSize: 9 })}>
+					<Typography
+						sx={(theme) => ({
+							color: theme.palette.text.secondary,
+							fontSize: 9,
+						})}
+					>
 						LOCAL SAVE EDITOR · FILES STAY ON THIS DEVICE
 					</Typography>
 					<Typography
 						sx={(theme) => ({
-							color: editor.dirty ? theme.palette.primary.main : theme.palette.text.secondary,
+							color: editor.dirty
+								? theme.palette.primary.main
+								: theme.palette.text.secondary,
 							fontSize: 9,
 						})}
 					>
@@ -87,8 +101,9 @@ export const App = () => {
 			<DiscardChangesDialog
 				currentCharacter={selectedSave?.characterName}
 				pendingSave={editor.pendingSave}
-				onClose={editor.closePendingSave}
-				onConfirm={editor.confirmPendingSave}
+				pendingRefresh={editor.pendingRefresh}
+				onClose={editor.closePendingAction}
+				onConfirm={editor.confirmPendingAction}
 			/>
 		</Box>
 	)

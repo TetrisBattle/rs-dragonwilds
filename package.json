@@ -22,7 +22,9 @@
 		"@electron-toolkit/utils": "^4.0.0",
 		"@emotion/react": "^11.14.0",
 		"@emotion/styled": "^11.14.1",
+		"@mui/icons-material": "^9.5.0",
 		"@mui/material": "^9.4.0",
+		"@mui/x-data-grid": "^9.15.0",
 		"electron-updater": "^6.3.9"
 	},
 	"devDependencies": {
