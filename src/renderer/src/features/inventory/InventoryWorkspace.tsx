@@ -14,6 +14,7 @@ import {
 import { useMemo, useState } from 'react'
 import type { SaveSummary } from '../../../../shared/save'
 import { PersonalChestTable } from './InventoryTable'
+import { getItemIcon } from './itemIcons'
 import { getItemName, getKnownItems } from './itemNames'
 import { getPersonalChest, getPersonalChestEntries } from './model'
 import type { EditableItemField, PersonalChestEntry, SaveData } from './types'
@@ -130,6 +131,7 @@ export function PersonalChestWorkspace({
 	onAddItem,
 }: PersonalChestWorkspaceProps) {
 	const [search, setSearch] = useState('')
+	const [addItemSearch, setAddItemSearch] = useState('')
 	const [addMenuAnchor, setAddMenuAnchor] = useState<HTMLElement | null>(null)
 	const personalChest = useMemo(() => getPersonalChest(saveData), [saveData])
 	const allEntries = useMemo(
@@ -137,6 +139,16 @@ export function PersonalChestWorkspace({
 		[personalChest],
 	)
 	const knownItems = useMemo(() => getKnownItems(), [])
+	const filteredKnownItems = useMemo(() => {
+		const normalizedQuery = addItemSearch.trim().toLowerCase()
+		if (!normalizedQuery) return knownItems
+
+		return knownItems.filter(
+			(item) =>
+				item.name.toLowerCase().includes(normalizedQuery) ||
+				item.id.toLowerCase().includes(normalizedQuery),
+		)
+	}, [addItemSearch, knownItems])
 	const visibleEntries = useMemo(
 		() => filterPersonalChestEntries(allEntries, search),
 		[allEntries, search],
@@ -245,7 +257,10 @@ export function PersonalChestWorkspace({
 							</Typography>
 							<Button
 								variant='outlined'
-								onClick={(event) => setAddMenuAnchor(event.currentTarget)}
+								onClick={(event) => {
+									setAddItemSearch('')
+									setAddMenuAnchor(event.currentTarget)
+								}}
 								disabled={!saveData}
 								sx={(theme) => ({
 									width: { xs: '100%', sm: 200 },
@@ -259,24 +274,81 @@ export function PersonalChestWorkspace({
 							<Menu
 								anchorEl={addMenuAnchor}
 								open={Boolean(addMenuAnchor)}
-								onClose={() => setAddMenuAnchor(null)}
+								onClose={() => {
+									setAddMenuAnchor(null)
+									setAddItemSearch('')
+								}}
 								slotProps={{
 									paper: {
-										sx: { maxHeight: 360, minWidth: 220 },
+										sx: { maxHeight: 420, minWidth: 280 },
+									},
+									list: {
+										autoFocusItem: false,
 									},
 								}}
 							>
-								{knownItems.map((item) => (
-									<MenuItem
-										key={item.id}
-										onClick={() => {
-											onAddItem(item.id)
-											setAddMenuAnchor(null)
+								<Box
+									sx={{
+										position: 'sticky',
+										top: 0,
+										zIndex: 1,
+										p: 1,
+										bgcolor: 'background.paper',
+									}}
+								>
+									<TextField
+										autoFocus
+										fullWidth
+										size='small'
+										placeholder='Search items by name or ID'
+										value={addItemSearch}
+										onChange={(event) => setAddItemSearch(event.target.value)}
+										onKeyDown={(event) => {
+											if (event.key !== 'Escape') event.stopPropagation()
 										}}
-									>
-										{item.name}
-									</MenuItem>
-								))}
+										slotProps={{
+											htmlInput: {
+												'aria-label': 'Search items to add',
+											},
+										}}
+									/>
+								</Box>
+								{filteredKnownItems.length ? (
+									filteredKnownItems.map((item) => (
+										<MenuItem
+											key={item.id}
+											onClick={() => {
+												onAddItem(item.id)
+												setAddMenuAnchor(null)
+												setAddItemSearch('')
+											}}
+										>
+											<Stack
+												direction='row'
+												spacing={1}
+												sx={{ alignItems: 'center' }}
+											>
+												{getItemIcon(item.id) && (
+													<Box
+														component='img'
+														src={getItemIcon(item.id)}
+														alt=''
+														aria-hidden='true'
+														sx={{
+															width: 24,
+															height: 24,
+															objectFit: 'contain',
+															flexShrink: 0,
+														}}
+													/>
+												)}
+												{item.name}
+											</Stack>
+										</MenuItem>
+									))
+								) : (
+									<MenuItem disabled>No matching items</MenuItem>
+								)}
 							</Menu>
 							<TextField
 								placeholder='Search item name, ID or slot'

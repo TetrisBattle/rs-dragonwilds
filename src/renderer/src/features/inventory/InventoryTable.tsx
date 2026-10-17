@@ -1,4 +1,5 @@
 import {
+	Box,
 	MenuItem,
 	Paper,
 	Select,
@@ -10,10 +11,10 @@ import {
 	TableHead,
 	TableRow,
 	TextField,
-	Tooltip,
 	Typography,
 } from '@mui/material'
 import { useState } from 'react'
+import { getItemIcon } from './itemIcons'
 import { getItemName, getKnownItems } from './itemNames'
 import type { EditableItemField, PersonalChestEntry } from './types'
 
@@ -119,6 +120,7 @@ export function PersonalChestTable({
 								'')
 							: null
 						const itemName = getItemName(item.ItemData) ?? item.ItemData
+						const itemIcon = getItemIcon(item.ItemData)
 						return (
 							<TableRow
 								key={slot}
@@ -141,7 +143,25 @@ export function PersonalChestTable({
 									{slot.padStart(2, '0')}
 								</TableCell>
 								<TableCell sx={{ borderColor: 'divider', minWidth: 200 }}>
-									<Tooltip title={`Item ID: ${item.ItemData}`}>
+									<Stack
+										direction='row'
+										spacing={1}
+										sx={{ alignItems: 'center' }}
+									>
+										{itemIcon && (
+											<Box
+												component='img'
+												src={itemIcon}
+												alt=''
+												aria-hidden='true'
+												sx={{
+													width: 30,
+													height: 30,
+													objectFit: 'contain',
+													flexShrink: 0,
+												}}
+											/>
+										)}
 										<Select
 											value={item.ItemData}
 											onChange={(event) =>
@@ -152,7 +172,8 @@ export function PersonalChestTable({
 											disableUnderline
 											inputProps={{ 'aria-label': `Item in slot ${slot}` }}
 											sx={(theme) => ({
-												width: '100%',
+												flex: 1,
+												minWidth: 0,
 												color: theme.palette.textItem,
 												fontFamily: getItemName(item.ItemData)
 													? 'inherit'
@@ -173,7 +194,7 @@ export function PersonalChestTable({
 												</MenuItem>
 											))}
 										</Select>
-									</Tooltip>
+									</Stack>
 								</TableCell>
 								<TableCell
 									align='right'
