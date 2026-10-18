@@ -1,9 +1,12 @@
+import BuildIcon from '@mui/icons-material/Build'
+import VerticalAlignTopIcon from '@mui/icons-material/VerticalAlignTop'
 import {
 	Alert,
 	Box,
 	Button,
 	CircularProgress,
 	FormControlLabel,
+	IconButton,
 	InputAdornment,
 	Menu,
 	MenuItem,
@@ -19,10 +22,14 @@ import {
 import { useMemo, useState } from 'react'
 import { InventoryTable } from './InventoryTable'
 import { InventoryUiPreview } from './InventoryUiPreview'
+import { ItemDetailsTooltip } from './ItemDetailsTooltip'
+import { getItemCategory, getItemData } from './itemData'
 import { getItemIcon } from './itemIcons'
-import { getItemName, getKnownItems } from './itemNames'
+import { getItemMaxStack, getItemName, getKnownItems } from './itemNames'
 import { MissingItemImage } from './MissingItemImage'
 import {
+	ARROWS_SLOT_START,
+	getInventoryCategorySlotRange,
 	getInventoryEntries,
 	getLoadout,
 	getLoadoutEntries,
@@ -31,7 +38,13 @@ import {
 	getPersonalChestEntries,
 	getPlayerInventory,
 	getPlayerInventorySlotCount,
+	getSlotLabel,
+	INVENTORY_SLOT_COUNT,
+	ITEMS_SLOT_START,
 	PERSONAL_CHEST_SLOT_COUNT,
+	QUEST_ITEMS_SLOT_START,
+	QUICK_ACCESS_SLOT_COUNT,
+	RUNES_SLOT_START,
 } from './model'
 import type {
 	EditableItemField,
@@ -67,6 +80,7 @@ interface InventoryWorkspaceProps {
 		value: number | null,
 	) => void
 	onAddItem: (itemId: string) => void
+	onAddInventoryItem: (itemId: string, category: InventoryCategory) => void
 	onRemoveItem: (slot: string) => void
 	onRemoveInventoryItem: (slot: string) => void
 	onMoveItem: (
@@ -84,6 +98,7 @@ interface InventoryWorkspaceProps {
 function filterInventoryEntries(
 	entries: InventoryEntry[],
 	query: string,
+	slotRangeStart: number,
 ): InventoryEntry[] {
 	const normalizedQuery = query.trim().toLowerCase()
 	if (!normalizedQuery) return entries
@@ -91,49 +106,20 @@ function filterInventoryEntries(
 	return entries.filter(
 		([slot, item]) =>
 			slot.toLowerCase().includes(normalizedQuery) ||
+			getSlotLabel(slot, slotRangeStart)
+				.toLowerCase()
+				.includes(normalizedQuery) ||
 			item.ItemData.toLowerCase().includes(normalizedQuery) ||
 			(getItemName(item.ItemData)?.toLowerCase().includes(normalizedQuery) ??
 				false),
 	)
 }
 
-const QUICK_ACCESS_ITEM_COUNT = 8
-const INVENTORY_SLOT_COUNT = 8 * 4
-const ITEMS_START = QUICK_ACCESS_ITEM_COUNT
-const RUNES_START = ITEMS_START + INVENTORY_SLOT_COUNT
-const ARROWS_START = RUNES_START + INVENTORY_SLOT_COUNT
-const QUEST_ITEMS_START = ARROWS_START + INVENTORY_SLOT_COUNT
-
-function getInventoryCategory(slot: string, itemId: string): InventoryCategory {
-	const slotIndex = Number(slot)
-	if (Number.isSafeInteger(slotIndex)) {
-		if (slotIndex >= 0 && slotIndex < QUICK_ACCESS_ITEM_COUNT)
-			return 'quick-access'
-		if (
-			slotIndex >= ITEMS_START &&
-			slotIndex < ITEMS_START + INVENTORY_SLOT_COUNT
-		) {
-			return 'items'
-		}
-		if (
-			slotIndex >= RUNES_START &&
-			slotIndex < RUNES_START + INVENTORY_SLOT_COUNT
-		) {
-			return 'runes'
-		}
-		if (
-			slotIndex >= ARROWS_START &&
-			slotIndex < ARROWS_START + INVENTORY_SLOT_COUNT
-		) {
-			return 'arrows'
-		}
-		if (
-			slotIndex >= QUEST_ITEMS_START &&
-			slotIndex < QUEST_ITEMS_START + INVENTORY_SLOT_COUNT
-		) {
-			return 'quest-items'
-		}
-	}
+function getItemInventoryCategory(itemId: string): InventoryCategory {
+	const category = getItemCategory(itemId)
+	if (category === 'Rune') return 'runes'
+	if (category === 'Ammo') return 'arrows'
+	if (category === 'Quest Item') return 'quest-items'
 
 	const name = getItemName(itemId)
 	if (!name) return 'items'
@@ -158,6 +144,40 @@ function getInventoryCategory(slot: string, itemId: string): InventoryCategory {
 	}
 
 	return 'items'
+}
+
+function getInventoryCategory(slot: string, itemId: string): InventoryCategory {
+	const slotIndex = Number(slot)
+	if (Number.isSafeInteger(slotIndex)) {
+		if (slotIndex >= 0 && slotIndex < QUICK_ACCESS_SLOT_COUNT)
+			return 'quick-access'
+		if (
+			slotIndex >= ITEMS_SLOT_START &&
+			slotIndex < ITEMS_SLOT_START + INVENTORY_SLOT_COUNT
+		) {
+			return 'items'
+		}
+		if (
+			slotIndex >= RUNES_SLOT_START &&
+			slotIndex < RUNES_SLOT_START + INVENTORY_SLOT_COUNT
+		) {
+			return 'runes'
+		}
+		if (
+			slotIndex >= ARROWS_SLOT_START &&
+			slotIndex < ARROWS_SLOT_START + INVENTORY_SLOT_COUNT
+		) {
+			return 'arrows'
+		}
+		if (
+			slotIndex >= QUEST_ITEMS_SLOT_START &&
+			slotIndex < QUEST_ITEMS_SLOT_START + INVENTORY_SLOT_COUNT
+		) {
+			return 'quest-items'
+		}
+	}
+
+	return getItemInventoryCategory(itemId)
 }
 
 function EmptyCharacterState() {
@@ -211,6 +231,7 @@ export function InventoryWorkspace({
 	onUpdateInventoryItem,
 	onUpdateLoadoutItem,
 	onAddItem,
+	onAddInventoryItem,
 	onRemoveItem,
 	onRemoveInventoryItem,
 	onMoveItem,
@@ -218,11 +239,13 @@ export function InventoryWorkspace({
 }: InventoryWorkspaceProps) {
 	const [search, setSearch] = useState('')
 	const [inventoryCategory, setInventoryCategory] =
-		useState<InventoryCategory>('items')
+		useState<InventoryCategory>('quick-access')
 	const [showEmptySlots, setShowEmptySlots] = useState(false)
 	const [addItemSearch, setAddItemSearch] = useState('')
 	const [addMenuAnchor, setAddMenuAnchor] = useState<HTMLElement | null>(null)
 	const isLoadoutView = view === 'inventory' && inventoryCategory === 'loadout'
+	const canAddItems =
+		view === 'personal-chest' || (view === 'inventory' && !isLoadoutView)
 	const personalChest = useMemo(() => getPersonalChest(saveData), [saveData])
 	const playerInventory = useMemo(
 		() => getPlayerInventory(saveData),
@@ -244,6 +267,37 @@ export function InventoryWorkspace({
 			: isLoadoutView
 				? getLoadoutSlotCount(loadout)
 				: getPlayerInventorySlotCount(playerInventory)
+	// Absolute [start, end) slots owned by the current tab. Empty rows and the
+	// slot numbers shown in the table are derived from it, so a tab only ever
+	// lists its own slots and stops at its capacity.
+	const slotRange: [number, number] =
+		view === 'personal-chest'
+			? [0, PERSONAL_CHEST_SLOT_COUNT]
+			: view === 'inventory' && !isLoadoutView
+				? (getInventoryCategorySlotRange(inventoryCategory) ?? [0, slotCount])
+				: [0, slotCount]
+	const [slotRangeStart, slotRangeEnd] = slotRange
+	const slotCapacity = Math.max(0, slotRangeEnd - slotRangeStart)
+	const occupiedSlotsInRange = allEntries.filter(([slot]) => {
+		const slotIndex = Number(slot)
+		return (
+			Number.isSafeInteger(slotIndex) &&
+			slotIndex >= slotRangeStart &&
+			slotIndex < slotRangeEnd
+		)
+	}).length
+	const isSlotRangeFull =
+		slotCapacity > 0 && occupiedSlotsInRange >= slotCapacity
+	const inventoryCategoryLabel =
+		inventoryCategory === 'quest-items'
+			? 'quest items'
+			: inventoryCategory === 'quick-access'
+				? 'quick access items'
+				: inventoryCategory === 'arrows'
+					? 'arrows'
+					: inventoryCategory === 'runes'
+						? 'runes'
+						: 'items'
 	const categoryEntries =
 		view === 'inventory' && !isLoadoutView
 			? allEntries.filter(
@@ -252,20 +306,80 @@ export function InventoryWorkspace({
 				)
 			: allEntries
 	const knownItems = useMemo(() => getKnownItems(), [])
+	const restrictAddMenuToCategory =
+		view === 'inventory' &&
+		!isLoadoutView &&
+		inventoryCategory !== 'quick-access'
 	const filteredKnownItems = useMemo(() => {
 		const normalizedQuery = addItemSearch.trim().toLowerCase()
-		if (!normalizedQuery) return knownItems
 
-		return knownItems.filter(
-			(item) =>
+		return knownItems.filter((item) => {
+			if (
+				restrictAddMenuToCategory &&
+				getItemInventoryCategory(item.id) !== inventoryCategory
+			) {
+				return false
+			}
+
+			return (
 				item.name.toLowerCase().includes(normalizedQuery) ||
-				item.id.toLowerCase().includes(normalizedQuery),
-		)
-	}, [addItemSearch, knownItems])
+				item.id.toLowerCase().includes(normalizedQuery) ||
+				(item.category?.toLowerCase().includes(normalizedQuery) ?? false)
+			)
+		})
+	}, [addItemSearch, inventoryCategory, knownItems, restrictAddMenuToCategory])
 	const visibleEntries = useMemo(
-		() => filterInventoryEntries(categoryEntries, search),
-		[categoryEntries, search],
+		() => filterInventoryEntries(categoryEntries, search, slotRangeStart),
+		[categoryEntries, search, slotRangeStart],
 	)
+	const updateItemForView =
+		view === 'personal-chest'
+			? onUpdateItem
+			: isLoadoutView
+				? onUpdateLoadoutItem
+				: onUpdateInventoryItem
+	// Stackable items in the current view whose count is below their max stack.
+	const stacksToMax = useMemo(() => {
+		const result: Array<{ slot: string; maxStack: number }> = []
+		for (const [slot, item] of visibleEntries) {
+			if (typeof item.Count !== 'number') continue
+			const maxStack = getItemMaxStack(item.ItemData, item)
+			if (
+				typeof maxStack === 'number' &&
+				maxStack > 1 &&
+				item.Count < maxStack
+			) {
+				result.push({ slot, maxStack })
+			}
+		}
+		return result
+	}, [visibleEntries])
+	const handleMaxAllStacks = () => {
+		for (const { slot, maxStack } of stacksToMax) {
+			updateItemForView(slot, 'Count', maxStack)
+		}
+	}
+	// Items in the current view whose durability is below its known max.
+	const itemsToRepair = useMemo(() => {
+		const result: Array<{ slot: string; durabilityMax: number }> = []
+		for (const [slot, item] of visibleEntries) {
+			if (typeof item.Durability !== 'number') continue
+			const durabilityMax = getItemData(item.ItemData)?.durability
+			if (
+				typeof durabilityMax === 'number' &&
+				durabilityMax > 0 &&
+				item.Durability < durabilityMax
+			) {
+				result.push({ slot, durabilityMax })
+			}
+		}
+		return result
+	}, [visibleEntries])
+	const handleRepairAll = () => {
+		for (const { slot, durabilityMax } of itemsToRepair) {
+			updateItemForView(slot, 'Durability', durabilityMax)
+		}
+	}
 
 	return (
 		<Box
@@ -323,9 +437,9 @@ export function InventoryWorkspace({
 					aria-label='Workspace views'
 					sx={{ mb: 2 }}
 				>
-					<Tab value='personal-chest' label='Personal Chest' />
 					<Tab value='inventory' label='Inventory' />
 					<Tab value='ui' label='UI' />
+					<Tab value='personal-chest' label='Personal Chest' />
 				</Tabs>
 				{view === 'inventory' && (
 					<Tabs
@@ -336,8 +450,8 @@ export function InventoryWorkspace({
 						aria-label='Inventory categories'
 						sx={{ mb: 2 }}
 					>
+						<Tab value='items' label='Inventory' />
 						<Tab value='quick-access' label='Quick Access' />
-						<Tab value='items' label='Items' />
 						<Tab value='runes' label='Runes' />
 						<Tab value='arrows' label='Arrows' />
 						<Tab value='quest-items' label='Quest Items' />
@@ -366,26 +480,13 @@ export function InventoryWorkspace({
 						>
 							<Typography sx={{ color: 'text.secondary', fontSize: 11 }}>
 								{view === 'personal-chest'
-									? `${visibleEntries.length} of ${slotCount} personal chest items`
+									? `${occupiedSlotsInRange} of ${slotCapacity} personal chest items`
 									: isLoadoutView
 										? `${visibleEntries.length} equipped items`
-										: `${visibleEntries.length} ${
-												inventoryCategory === 'quest-items'
-													? 'quest items'
-													: inventoryCategory === 'quick-access'
-														? 'quick access items'
-														: inventoryCategory === 'arrows'
-															? 'arrows'
-															: inventoryCategory === 'runes'
-																? 'runes'
-																: 'items'
-											}`}
+										: `${occupiedSlotsInRange} of ${slotCapacity} ${inventoryCategoryLabel}`}
 							</Typography>
 							<FormControlLabel
-								hidden={
-									isLoadoutView ||
-									(view === 'inventory' && inventoryCategory !== 'items')
-								}
+								hidden={isLoadoutView}
 								control={
 									<Switch
 										size='small'
@@ -402,25 +503,42 @@ export function InventoryWorkspace({
 									'& .MuiFormControlLabel-label': { fontSize: 11 },
 								}}
 							/>
-							{view === 'personal-chest' && (
-								<Button
-									variant='outlined'
-									onClick={(event) => {
-										setAddItemSearch('')
-										setAddMenuAnchor(event.currentTarget)
-									}}
-									disabled={!saveData}
-									sx={(theme) => ({
-										width: { xs: '100%', sm: 200 },
-										color: theme.palette.text.primary,
-										borderColor: theme.palette.divider,
-										fontSize: 12,
-									})}
+							{canAddItems && (
+								<Tooltip
+									title={
+										isSlotRangeFull
+											? `No free slots — ${occupiedSlotsInRange}/${slotCapacity} used`
+											: ''
+									}
+									arrow
 								>
-									Add item
-								</Button>
+									<Box
+										component='span'
+										sx={{
+											display: 'inline-flex',
+											width: { xs: '100%', sm: 200 },
+										}}
+									>
+										<Button
+											variant='outlined'
+											onClick={(event) => {
+												setAddItemSearch('')
+												setAddMenuAnchor(event.currentTarget)
+											}}
+											disabled={!saveData || isSlotRangeFull}
+											sx={(theme) => ({
+												width: '100%',
+												color: theme.palette.text.primary,
+												borderColor: theme.palette.divider,
+												fontSize: 12,
+											})}
+										>
+											Add item
+										</Button>
+									</Box>
+								</Tooltip>
 							)}
-							{view === 'personal-chest' && (
+							{canAddItems && (
 								<Menu
 									anchorEl={addMenuAnchor}
 									open={Boolean(addMenuAnchor)}
@@ -450,7 +568,7 @@ export function InventoryWorkspace({
 											autoFocus
 											fullWidth
 											size='small'
-											placeholder='Search items by name or ID'
+											placeholder='Search items by name, ID or category'
 											value={addItemSearch}
 											onChange={(event) => setAddItemSearch(event.target.value)}
 											onKeyDown={(event) => {
@@ -467,14 +585,23 @@ export function InventoryWorkspace({
 										filteredKnownItems.map((item) => (
 											<Tooltip
 												key={item.id}
-												title={item.name}
+												title={
+													<ItemDetailsTooltip
+														itemId={item.id}
+														name={item.name}
+													/>
+												}
 												arrow
 												placement='right'
 												enterDelay={500}
 											>
 												<MenuItem
 													onClick={() => {
-														onAddItem(item.id)
+														if (view === 'inventory') {
+															onAddInventoryItem(item.id, inventoryCategory)
+														} else {
+															onAddItem(item.id)
+														}
 														setAddMenuAnchor(null)
 														setAddItemSearch('')
 													}}
@@ -482,7 +609,7 @@ export function InventoryWorkspace({
 													<Stack
 														direction='row'
 														spacing={1}
-														sx={{ alignItems: 'center' }}
+														sx={{ alignItems: 'center', width: '100%' }}
 													>
 														{getItemIcon(item.id) ? (
 															<Box
@@ -500,7 +627,22 @@ export function InventoryWorkspace({
 														) : (
 															<MissingItemImage size={24} />
 														)}
-														{item.name}
+														<Typography sx={{ flex: 1, minWidth: 0 }}>
+															{item.name}
+														</Typography>
+														{item.category && (
+															<Typography
+																sx={{
+																	color: 'text.secondary',
+																	fontSize: 10,
+																	letterSpacing: '0.06em',
+																	textTransform: 'uppercase',
+																	flexShrink: 0,
+																}}
+															>
+																{item.category}
+															</Typography>
+														)}
 													</Stack>
 												</MenuItem>
 											</Tooltip>
@@ -510,6 +652,44 @@ export function InventoryWorkspace({
 									)}
 								</Menu>
 							)}
+							<Stack direction='row' spacing={0.5} sx={{ alignItems: 'center' }}>
+								<Tooltip title='Repair' arrow>
+									<span>
+										<IconButton
+											aria-label='Repair'
+											onClick={handleRepairAll}
+											disabled={itemsToRepair.length === 0}
+											sx={(theme) => ({
+												color: theme.palette.text.primary,
+												border: 1,
+												borderColor: theme.palette.divider,
+												borderRadius: 1,
+											})}
+										>
+											<BuildIcon sx={{ fontSize: 18 }} />
+										</IconButton>
+									</span>
+								</Tooltip>
+								{!isLoadoutView && (
+									<Tooltip title='Max all stacks' arrow>
+										<span>
+											<IconButton
+												aria-label='Max all stacks'
+												onClick={handleMaxAllStacks}
+												disabled={stacksToMax.length === 0}
+												sx={(theme) => ({
+													color: theme.palette.text.primary,
+													border: 1,
+													borderColor: theme.palette.divider,
+													borderRadius: 1,
+												})}
+											>
+												<VerticalAlignTopIcon sx={{ fontSize: 18 }} />
+											</IconButton>
+										</span>
+									</Tooltip>
+								)}
+							</Stack>
 							<TextField
 								placeholder='Search item name, ID or slot'
 								value={search}
@@ -545,8 +725,9 @@ export function InventoryWorkspace({
 							/>
 						</Stack>
 						<InventoryTable
+							key={view}
 							entries={visibleEntries}
-							slotCount={slotCount}
+							slotRange={slotRange}
 							onUpdateItem={
 								view === 'personal-chest'
 									? onUpdateItem

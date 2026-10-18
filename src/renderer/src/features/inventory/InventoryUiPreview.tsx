@@ -1,5 +1,6 @@
 import { Box, Paper, Stack, Tooltip, Typography } from '@mui/material'
 import { useMemo, useState } from 'react'
+import { ItemDetailsTooltip } from './ItemDetailsTooltip'
 import { getItemIcon } from './itemIcons'
 import { getItemName } from './itemNames'
 import { MissingItemImage } from './MissingItemImage'
@@ -51,7 +52,19 @@ function PreviewItem({
 
 	return (
 		<Tooltip
-			title={name ?? ''}
+			title={
+				item ? (
+					<ItemDetailsTooltip
+						itemId={item.ItemData}
+						name={name ?? item.ItemData}
+						durability={
+							typeof item.Durability === 'number' ? item.Durability : null
+						}
+					/>
+				) : (
+					''
+				)
+			}
 			disableHoverListener={!item}
 			arrow
 			placement='top'

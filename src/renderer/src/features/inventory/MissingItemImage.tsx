@@ -1,5 +1,5 @@
 import { Box } from '@mui/material'
-import missingItemImage from './assets/no-image.jpg'
+import missingItemImage from './assets/quest-scroll.svg'
 
 interface MissingItemImageProps {
 	size?: number
@@ -15,7 +15,6 @@ export function MissingItemImage({
 			component='img'
 			src={missingItemImage}
 			alt='Item image not available'
-			title='Item image not available'
 			sx={{
 				position: fill ? 'absolute' : 'static',
 				inset: fill ? 0 : 'auto',

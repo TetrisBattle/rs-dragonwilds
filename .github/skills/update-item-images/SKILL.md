@@ -20,8 +20,8 @@ Use the user's downloaded item images to update the inventory icons in this proj
 - Arrow images belong in `src/renderer/src/features/inventory/assets/gear/arrows`.
 - Resource images, including Stone, belong in `src/renderer/src/features/inventory/assets/resources`.
 - Preserve the original image format (`.png` or `.webp`) and copy files into the project; do not move or delete the user's source files.
-- The user has confirmed that the RuneScape: Dragonwilds Wiki images can be used in this personal project. For bulk image imports, use the wiki's MediaWiki API via `npm run import:item-images`; do not scrape HTML pages or guess image URLs.
-- The importer must match exact item page titles to known item names, keep downloaded images bundled locally, and preserve the source image format. Retain source-page and image URLs in the generated provenance JSON.
+- The user has confirmed that the RuneScape: Dragonwilds Wiki images can be used in this personal project. For bulk imports, use the MediaWiki API via `npm run import:item-data`; do not scrape HTML pages or guess image URLs.
+- The importer matches exact item page titles to known item names, keeps downloaded images bundled locally, and preserves the source image format. Retain source-page and image URLs in the generated provenance JSON.
 - Use a descriptive User-Agent and bounded request concurrency when accessing the wiki API. Do not request more data than needed.
 
 ## Naming convention
@@ -48,11 +48,21 @@ Use lowercase kebab-case for asset filenames, including the extension:
 4. If the image name matches an existing friendly item name but its persistence ID is not available, do not create a guessed mapping. Leave it unmapped and ask the user for an item ID or a save entry containing that item.
 5. Keep icons bundled locally with the app; do not use remote image URLs.
 6. Do not alter unrelated save-editing behavior or remove existing user assets.
-7. For a bulk wiki import, update the generated wiki icon map and provenance using the importer. Never map a non-exact page-title match to an item ID.
+7. For a bulk import, run `npm run import:item-data`, which scrapes item pages, merges wiki/gaming/game sources into `itemData.generated.ts`, writes raw wiki data to `wiki-item-data.json`, downloads any missing images, reorganizes `assets/wiki/` into per-category folders, and regenerates `wikiItemIcons.generated.ts` plus the provenance JSON. Never map a non-exact page-title match to an item ID.
+
+## Bulk wiki pipeline
+
+`npm run import:item-data` drives `scripts/import-item-data.mjs`:
+
+- Sources: `dragonwilds.runescape.wiki` (authoritative category + stats), `xgamingserver.com/tools/dragonwilds/items.json` (stats), `Elleandria/RS-Dragonwilds-Editor` `data/ItemID.json` (persistence IDs), and the local `itemCatalog.ts`.
+- Outputs: `itemData.generated.ts` (typed, keyed by persistence ID), `wiki-item-data.json` (raw parsed wiki pages), `wikiItemIcons.generated.ts`, and `wiki-item-image-sources.json`.
+- Images are placed in `assets/wiki/<category>/<slug>.<ext>` during a bulk import. Hand-curated icons imported manually still live at the assets root in their own folders.
+- Categories are the wiki `item_type` values normalized to a canonical set; raw `wikiType`/`gamingCategory`/`gameCategory` values are preserved on every record.
+- Use `npm run import:item-data -- --data-only` to refresh the dataset without touching assets.
 
 ## Verification
 
 - Check import paths and make sure filenames match exact casing.
 - Run `npx biome check src/renderer/src/features/inventory/itemIcons.ts`.
-- Run `npm run build` to verify the renderer bundles the images.
+- Run `npm run typecheck` and `npm run build` to verify the renderer bundles the images.
 - Report which images were added and which could not be mapped due to missing item IDs.

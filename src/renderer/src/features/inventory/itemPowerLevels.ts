@@ -529,6 +529,12 @@ const upgradeableItemIds: ReadonlySet<string> = new Set([
 	'z0Cq8kyZGceXi3KE508GDg',
 ])
 
+// Highest power level an item can be ascended to. Ascension Core 8 takes
+// masterwork gear from 7 to 8 and no core exists beyond it, so 8 is the real
+// in-game ceiling. Power level 9 only exists as the native base of Dragon gear
+// and cannot be reached through ascension.
+export const MAX_POWER_LEVEL = 8
+
 export function getItemBasePowerLevel(itemId: string): number | undefined {
 	return itemBasePowerLevels[itemId]
 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { SaveData, SaveSummary } from '../../../../shared/save'
 import {
 	addPersonalChestItem as addPersonalChestItemToSave,
+	addPlayerInventoryItem as addPlayerInventoryItemToSave,
 	updateLoadoutItem as applyLoadoutItemUpdate,
 	updatePersonalChestItem as applyPersonalChestItemUpdate,
 	updatePlayerInventoryItem as applyPlayerInventoryItemUpdate,
@@ -11,7 +12,7 @@ import {
 	removePersonalChestItem as removePersonalChestItemFromSave,
 	removePlayerInventoryItem as removePlayerInventoryItemFromSave,
 } from '../inventory/model'
-import type { EditableItemField } from '../inventory/types'
+import type { EditableItemField, InventoryCategory } from '../inventory/types'
 
 function getErrorMessage(error: unknown): string {
 	return error instanceof Error
@@ -64,8 +65,19 @@ export function useSaveEditor() {
 		try {
 			const loadedSave = await window.api.readSave(save.fileName)
 			const normalized = initializeMissingItemCounts(loadedSave)
-			setSaveData(normalized.save)
-			setDirty(normalized.changed)
+			if (normalized.changed) {
+				await window.api.writeSave(save.fileName, normalized.save)
+				const refreshedSave = await window.api.readSave(save.fileName)
+				const reNormalized = initializeMissingItemCounts(refreshedSave)
+				setSaveData(reNormalized.save)
+				setDirty(false)
+				setNotice(
+					'Auto-fixed missing item counts. A timestamped backup of the original file was created.',
+				)
+			} else {
+				setSaveData(normalized.save)
+				setDirty(false)
+			}
 		} catch (readError) {
 			setError(`Could not open ${save.fileName}. ${getErrorMessage(readError)}`)
 			setSelectedFile(null)
@@ -165,12 +177,25 @@ export function useSaveEditor() {
 		setNotice(null)
 	}, [])
 
+	const addInventoryItem = useCallback(
+		(itemId: string, category: InventoryCategory) => {
+			setSaveData((current) =>
+				current
+					? addPlayerInventoryItemToSave(current, itemId, category)
+					: current,
+			)
+			setDirty(true)
+			setNotice(null)
+		},
+		[],
+	)
+
 	const removeItem = useCallback((slot: string) => {
 		setSaveData((current) =>
 			current ? removePersonalChestItemFromSave(current, slot) : current,
 		)
 		setDirty(true)
-		setNotice('Item removed. Save changes to keep it.')
+		setNotice(null)
 	}, [])
 
 	const removePlayerInventoryItem = useCallback((slot: string) => {
@@ -178,7 +203,7 @@ export function useSaveEditor() {
 			current ? removePlayerInventoryItemFromSave(current, slot) : current,
 		)
 		setDirty(true)
-		setNotice('Item removed. Save changes to keep it.')
+		setNotice(null)
 	}, [])
 
 	const moveItem = useCallback(
@@ -257,6 +282,7 @@ export function useSaveEditor() {
 		updatePlayerInventoryItem,
 		updateLoadoutItem,
 		addItem,
+		addInventoryItem,
 		removeItem,
 		removePlayerInventoryItem,
 		moveItem,

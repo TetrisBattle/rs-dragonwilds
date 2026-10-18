@@ -1,6 +1,8 @@
+import { getItemData } from './itemData'
 import { getItemMaxStack } from './itemNames'
 import type {
 	EditableItemField,
+	InventoryCategory,
 	InventoryEntry,
 	InventoryItem,
 	PersonalChestEntry,
@@ -9,6 +11,49 @@ import type {
 } from './types'
 
 export const PERSONAL_CHEST_SLOT_COUNT = 20
+
+export const QUICK_ACCESS_SLOT_COUNT = 8
+export const INVENTORY_SLOT_COUNT = 8 * 4
+export const ITEMS_SLOT_START = QUICK_ACCESS_SLOT_COUNT
+export const RUNES_SLOT_START = ITEMS_SLOT_START + INVENTORY_SLOT_COUNT
+export const ARROWS_SLOT_START = RUNES_SLOT_START + INVENTORY_SLOT_COUNT
+export const QUEST_ITEMS_SLOT_START = ARROWS_SLOT_START + INVENTORY_SLOT_COUNT
+
+export function getInventoryCategorySlotRange(
+	category: InventoryCategory,
+): [start: number, end: number] | null {
+	switch (category) {
+		case 'quick-access':
+			return [0, ITEMS_SLOT_START]
+		case 'items':
+			return [ITEMS_SLOT_START, RUNES_SLOT_START]
+		case 'runes':
+			return [RUNES_SLOT_START, ARROWS_SLOT_START]
+		case 'arrows':
+			return [ARROWS_SLOT_START, QUEST_ITEMS_SLOT_START]
+		case 'quest-items':
+			return [
+				QUEST_ITEMS_SLOT_START,
+				QUEST_ITEMS_SLOT_START + INVENTORY_SLOT_COUNT,
+			]
+		default:
+			return null
+	}
+}
+
+/**
+ * Slot number shown in the UI. Slots are 1-based and relative to the first
+ * slot of the current tab, so the last row of a tab is its capacity. The
+ * absolute slot stored in the save is never modified; slots outside the
+ * current tab keep their raw id.
+ */
+export function getSlotLabel(slot: string, rangeStart: number): string {
+	const absoluteSlot = Number(slot)
+	const displaySlot = Number.isSafeInteger(absoluteSlot)
+		? absoluteSlot - rangeStart + 1
+		: Number.NaN
+	return (displaySlot >= 1 ? String(displaySlot) : slot).padStart(2, '0')
+}
 
 export function isInventoryItem(value: unknown): value is InventoryItem {
 	return (
@@ -467,6 +512,38 @@ function moveInventoryItem(
 	}
 }
 
+function createItemGuid(existingGuids: Set<string>): string {
+	let guid: string
+	do {
+		const bytes = crypto.getRandomValues(new Uint8Array(16))
+		guid = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0'))
+			.join('')
+			.slice(0, 22)
+	} while (existingGuids.has(guid))
+	return guid
+}
+
+function collectGuids(inventory: Record<string, unknown>): Set<string> {
+	return new Set(
+		Object.values(inventory)
+			.filter(
+				(value): value is Record<string, unknown> =>
+					typeof value === 'object' && value !== null && !Array.isArray(value),
+			)
+			.map((item) => item.GUID)
+			.filter((guid): guid is string => typeof guid === 'string'),
+	)
+}
+
+/**
+ * Durability a freshly spawned item starts with. Non-durable items (and
+ * unknown items) return `undefined` so the field stays absent.
+ */
+function getItemDefaultDurability(itemId: string): number | undefined {
+	const durability = getItemData(itemId)?.durability
+	return typeof durability === 'number' && durability > 0 ? durability : undefined
+}
+
 export function addPersonalChestItem(save: SaveData, itemId: string): SaveData {
 	const currentProgress = save.GameProgress
 	const progress =
@@ -490,23 +567,11 @@ export function addPersonalChestItem(save: SaveData, itemId: string): SaveData {
 	const highestOccupiedSlot = Math.max(-1, ...occupiedSlots)
 	let nextSlot = 0
 	while (occupiedSlots.has(nextSlot)) nextSlot += 1
+	// A full chest must not grow past its capacity.
+	if (nextSlot >= PERSONAL_CHEST_SLOT_COUNT) return save
 
-	const existingGuids = new Set(
-		Object.values(personalInventory)
-			.filter(
-				(value): value is Record<string, unknown> =>
-					typeof value === 'object' && value !== null && !Array.isArray(value),
-			)
-			.map((item) => item.GUID)
-			.filter((guid): guid is string => typeof guid === 'string'),
-	)
-	let guid: string
-	do {
-		const bytes = crypto.getRandomValues(new Uint8Array(16))
-		guid = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0'))
-			.join('')
-			.slice(0, 22)
-	} while (existingGuids.has(guid))
+	const guid = createItemGuid(collectGuids(personalInventory))
+	const durability = getItemDefaultDurability(itemId)
 
 	return {
 		...save,
@@ -518,12 +583,71 @@ export function addPersonalChestItem(save: SaveData, itemId: string): SaveData {
 					GUID: guid,
 					ItemData: itemId,
 					Count: 1,
+					...(durability !== undefined ? { Durability: durability } : {}),
 				},
 				MaxSlotIndex: Math.max(
 					typeof personalInventory.MaxSlotIndex === 'number'
 						? personalInventory.MaxSlotIndex
 						: -1,
 					highestOccupiedSlot,
+					nextSlot,
+				),
+			},
+		},
+	}
+}
+
+export function addPlayerInventoryItem(
+	save: SaveData,
+	itemId: string,
+	category: InventoryCategory,
+): SaveData {
+	const slotRange = getInventoryCategorySlotRange(category)
+	if (!slotRange) return save
+
+	const currentProgress = save.GameProgress
+	const progress =
+		currentProgress &&
+		typeof currentProgress === 'object' &&
+		!Array.isArray(currentProgress)
+			? (currentProgress as Record<string, unknown>)
+			: {}
+	const currentInventory = progress.Inventory
+	const inventory =
+		currentInventory &&
+		typeof currentInventory === 'object' &&
+		!Array.isArray(currentInventory)
+			? (currentInventory as Record<string, unknown>)
+			: {}
+
+	let nextSlot = -1
+	for (let slot = slotRange[0]; slot < slotRange[1]; slot += 1) {
+		if (!isInventoryItem(inventory[String(slot)])) {
+			nextSlot = slot
+			break
+		}
+	}
+	if (nextSlot === -1) return save
+
+	const guid = createItemGuid(collectGuids(inventory))
+	const durability = getItemDefaultDurability(itemId)
+
+	return {
+		...save,
+		GameProgress: {
+			...progress,
+			Inventory: {
+				...inventory,
+				[String(nextSlot)]: {
+					GUID: guid,
+					ItemData: itemId,
+					Count: 1,
+					...(durability !== undefined ? { Durability: durability } : {}),
+				},
+				MaxSlotIndex: Math.max(
+					typeof inventory.MaxSlotIndex === 'number'
+						? inventory.MaxSlotIndex
+						: -1,
 					nextSlot,
 				),
 			},

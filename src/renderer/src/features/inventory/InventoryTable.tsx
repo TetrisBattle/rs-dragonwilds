@@ -1,27 +1,37 @@
+import AddIcon from '@mui/icons-material/Add'
+import BuildIcon from '@mui/icons-material/Build'
 import DeleteIcon from '@mui/icons-material/Delete'
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator'
+import RemoveIcon from '@mui/icons-material/Remove'
+import UndoIcon from '@mui/icons-material/Undo'
+import VerticalAlignTopIcon from '@mui/icons-material/VerticalAlignTop'
 import {
 	Box,
 	IconButton,
 	Paper,
 	Stack,
 	TextField,
+	Tooltip,
 	Typography,
 } from '@mui/material'
 import { DataGrid, type GridColDef } from '@mui/x-data-grid'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { getItemData } from './itemData'
 import { getItemIcon } from './itemIcons'
 import { getItemMaxStack, getItemName } from './itemNames'
 import {
 	canUpgradeItemPowerLevel,
 	getItemBasePowerLevel,
+	MAX_POWER_LEVEL,
 } from './itemPowerLevels'
 import { MissingItemImage } from './MissingItemImage'
+import { getSlotLabel } from './model'
 import type { EditableItemField, InventoryEntry } from './types'
 
 interface InventoryTableProps {
 	entries: InventoryEntry[]
-	slotCount: number
+	/** Absolute [start, end) slot range owned by the current tab. */
+	slotRange: [number, number]
 	onUpdateItem: (
 		slot: string,
 		field: EditableItemField,
@@ -42,6 +52,9 @@ interface InventoryTableProps {
 interface InventoryGridRow {
 	id: string
 	slot: string
+	/** 1-based slot number displayed in the UI; `slot` stays the raw id. */
+	slotLabel: string
+	itemId: string | null
 	itemName: string
 	itemIcon: string | undefined
 	isKnownItem: boolean
@@ -49,23 +62,28 @@ interface InventoryGridRow {
 	loadoutMode?: boolean
 	field: EditableItemField | null
 	value: string | null
+	countMax: number | null
+	durability: number | null
+	durabilityMax: number | null
+	canRepairDurability?: boolean
+	canMaxCount?: boolean
 	basePowerLevel: number | null
-	powerLevelValue: string | null
+	powerLevel: number | null
 	canUpgradePowerLevel: boolean
+	canDecreasePowerLevel?: boolean
+	canIncreasePowerLevel?: boolean
 	onSelectForDrag?: () => void
 	onStartDrag?: () => void
 	onQuantityChange?: (field: EditableItemField, value: string) => void
 	onQuantityBlur?: (field: EditableItemField, value: string) => void
-	onPowerLevelChange?: (value: string) => void
-	onPowerLevelBlur?: (value: string) => void
+	onPowerLevelDecrease?: () => void
+	onPowerLevelIncrease?: () => void
+	onRepairDurability?: () => void
+	onRevertDurability?: () => void
+	onMaxCount?: () => void
+	onRevertCount?: () => void
 	onRemove?: () => void
 	canDrag?: boolean
-}
-
-function getEditableField(item: InventoryEntry[1]): EditableItemField | null {
-	if (typeof item.Count === 'number') return 'Count'
-	if (typeof item.Durability === 'number') return 'Durability'
-	return null
 }
 
 function renderSlotCell(row: InventoryGridRow) {
@@ -84,7 +102,7 @@ function renderSlotCell(row: InventoryGridRow) {
 				<IconButton
 					size='small'
 					draggable
-					aria-label={`Drag item from slot ${row.slot}`}
+					aria-label={`Drag item from slot ${row.slotLabel}`}
 					onClick={(event) => {
 						event.stopPropagation()
 						row.onSelectForDrag?.()
@@ -122,14 +140,14 @@ function renderSlotCell(row: InventoryGridRow) {
 					lineHeight: 1,
 				}}
 			>
-				{row.slot.padStart(2, '0')}
+				{row.slotLabel}
 			</Typography>
 		</Stack>
 	)
 }
 
 function renderItemCell(row: InventoryGridRow) {
-	return (
+	const content = (
 		<Stack
 			direction='row'
 			spacing={1}
@@ -160,7 +178,9 @@ function renderItemCell(row: InventoryGridRow) {
 				sx={(theme) => ({
 					flex: 1,
 					minWidth: 0,
-					color: row.isEmpty ? theme.palette.textSubtle : theme.palette.textItem,
+					color: row.isEmpty
+						? theme.palette.textSubtle
+						: theme.palette.textItem,
 					fontFamily: row.isKnownItem ? 'inherit' : 'Consolas, monospace',
 					fontSize: 11,
 					fontStyle: row.isEmpty ? 'italic' : 'normal',
@@ -173,10 +193,157 @@ function renderItemCell(row: InventoryGridRow) {
 			</Typography>
 		</Stack>
 	)
+
+	return content
+}
+
+function renderDurabilityCell(row: InventoryGridRow) {
+	const durabilityMax = row.durabilityMax
+	const canRepair = row.canRepairDurability === true
+	const canRevert = row.onRevertDurability !== undefined
+	return (
+		<Stack
+			direction='row'
+			spacing={0.5}
+			sx={{ width: '100%', alignItems: 'center', justifyContent: 'center' }}
+		>
+			<Box
+				sx={{
+					display: 'flex',
+					alignItems: 'baseline',
+					justifyContent: 'flex-end',
+					gap: 0.25,
+					minWidth: 76,
+				}}
+			>
+				<Typography
+					sx={{
+						color: 'text.primary',
+						fontSize: 12,
+						fontVariantNumeric: 'tabular-nums',
+					}}
+				>
+					{row.durability}
+				</Typography>
+				{durabilityMax !== null && (
+					<Typography
+						sx={{
+							color: 'text.secondary',
+							fontSize: 10,
+							fontVariantNumeric: 'tabular-nums',
+						}}
+					>
+						/{durabilityMax}
+					</Typography>
+				)}
+			</Box>
+			{durabilityMax !== null &&
+				(canRevert ? (
+					<Tooltip title='Revert durability change' arrow>
+						<IconButton
+							size='small'
+							aria-label={`Revert durability for ${row.itemName}`}
+							onClick={row.onRevertDurability}
+							sx={{ p: 0.4, color: 'text.secondary' }}
+						>
+							<UndoIcon sx={{ fontSize: 16 }} />
+						</IconButton>
+					</Tooltip>
+				) : (
+					<IconButton
+						size='small'
+						disabled={!canRepair}
+						aria-label={`Repair ${row.itemName} to full durability`}
+						onClick={row.onRepairDurability}
+						sx={{
+							p: 0.4,
+							color: canRepair ? 'primary.main' : 'text.disabled',
+						}}
+					>
+						<BuildIcon sx={{ fontSize: 16 }} />
+					</IconButton>
+				))}
+		</Stack>
+	)
+}
+
+function renderCountCell(row: InventoryGridRow) {
+	const countMax = row.countMax
+	const canMax = row.canMaxCount === true
+	const canRevert = row.onRevertCount !== undefined
+	return (
+		<Stack
+			direction='row'
+			spacing={0.5}
+			sx={{ width: '100%', alignItems: 'center', justifyContent: 'center' }}
+		>
+			<Box
+				sx={{
+					display: 'flex',
+					alignItems: 'baseline',
+					justifyContent: 'flex-end',
+					gap: 0.25,
+					minWidth: 76,
+				}}
+			>
+				<Typography
+					sx={{
+						color: 'text.primary',
+						fontSize: 12,
+						fontVariantNumeric: 'tabular-nums',
+					}}
+				>
+					{row.value}
+				</Typography>
+				{countMax !== null && (
+					<Typography
+						sx={{
+							color: 'text.secondary',
+							fontSize: 10,
+							fontVariantNumeric: 'tabular-nums',
+						}}
+					>
+						/{countMax}
+					</Typography>
+				)}
+			</Box>
+			{countMax !== null &&
+				(canRevert ? (
+					<Tooltip title='Revert stack change' arrow>
+						<IconButton
+							size='small'
+							aria-label={`Revert stack for ${row.itemName}`}
+							onClick={row.onRevertCount}
+							sx={{ p: 0.4, color: 'text.secondary' }}
+						>
+							<UndoIcon sx={{ fontSize: 16 }} />
+						</IconButton>
+					</Tooltip>
+				) : (
+					<IconButton
+						size='small'
+						disabled={!canMax || row.onMaxCount === undefined}
+						aria-label={`Max stack of ${row.itemName}`}
+						onClick={row.onMaxCount}
+						sx={{
+							p: 0.4,
+							color: canMax ? 'primary.main' : 'text.disabled',
+						}}
+					>
+						<VerticalAlignTopIcon sx={{ fontSize: 16 }} />
+					</IconButton>
+				))}
+		</Stack>
+	)
 }
 
 function renderQuantityCell(row: InventoryGridRow) {
 	if (row.isEmpty) return null
+	if (row.durability !== null) return renderDurabilityCell(row)
+	// Stackable counts with a known limit are read-only ("count / max") and
+	// filled with the button, mirroring the durability display. Items with an
+	// unknown limit keep the editable field since there is nothing to max to.
+	if (row.countMax !== null) return renderCountCell(row)
 	if (!row.field || row.value === null) {
 		return (
 			<Typography
@@ -191,9 +358,11 @@ function renderQuantityCell(row: InventoryGridRow) {
 	return (
 		<Stack
 			direction='row'
+			spacing={0.75}
 			sx={{
 				width: '100%',
 				justifyContent: 'center',
+				alignItems: 'center',
 			}}
 		>
 			<TextField
@@ -205,9 +374,8 @@ function renderQuantityCell(row: InventoryGridRow) {
 						'aria-label': field,
 					},
 				}}
-				fullWidth
 				sx={(theme) => ({
-					width: '100%',
+					flex: 1,
 					minWidth: 0,
 					'& .MuiOutlinedInput-root': {
 						height: 32,
@@ -218,6 +386,12 @@ function renderQuantityCell(row: InventoryGridRow) {
 						'& fieldset': { borderColor: theme.palette.divider },
 						'&:hover:not(.Mui-focused) fieldset': {
 							borderColor: theme.palette.divider,
+						},
+						// MUI promotes the fieldset to a 2px primary-colored border
+						// on focus; out-specify that state to keep the divider look.
+						'&.Mui-focused fieldset': {
+							borderColor: theme.palette.divider,
+							borderWidth: 1,
 						},
 					},
 					'& .MuiInputBase-input': {
@@ -233,59 +407,96 @@ function renderQuantityCell(row: InventoryGridRow) {
 }
 
 function renderPowerLevelCell(row: InventoryGridRow) {
-	if (row.isEmpty || row.basePowerLevel === null) return null
+	const powerLevel = row.powerLevel
+	if (row.isEmpty || row.basePowerLevel === null || powerLevel === null) {
+		return null
+	}
 
+	// Non-ascendable items only show their power level.
 	if (!row.canUpgradePowerLevel) {
 		return (
 			<Typography
 				aria-label={`Power level for ${row.itemName}`}
-				sx={{ width: '100%', textAlign: 'center', fontSize: 12 }}
+				sx={{
+					width: '100%',
+					textAlign: 'center',
+					fontSize: 12,
+					fontVariantNumeric: 'tabular-nums',
+				}}
 			>
-				{row.powerLevelValue}
+				{powerLevel}
 			</Typography>
 		)
 	}
 
+	const canDecrease = row.canDecreasePowerLevel === true
+	const canIncrease = row.canIncreasePowerLevel === true
+
 	return (
-		<TextField
-			type='text'
-			value={row.powerLevelValue ?? ''}
-			onChange={(event) => row.onPowerLevelChange?.(event.target.value)}
-			onBlur={(event) => row.onPowerLevelBlur?.(event.target.value)}
-			slotProps={{
-				htmlInput: {
-					'aria-label': `Power level for ${row.itemName}`,
-					inputMode: 'numeric',
-				},
-			}}
-			fullWidth
-			sx={(theme) => ({
-				width: '100%',
-				height: '100%',
-				minWidth: 0,
-				'& .MuiOutlinedInput-root': {
-					height: '100%',
-					boxSizing: 'border-box',
-					bgcolor: theme.palette.surfaceInput,
-					color: theme.palette.text.primary,
+		<Stack
+			direction='row'
+			spacing={0.5}
+			sx={{ width: '100%', alignItems: 'center', justifyContent: 'center' }}
+		>
+			<Tooltip
+				title={
+					canDecrease
+						? `Decrease power level for ${row.itemName}`
+						: `${row.itemName} is already at its base power level`
+				}
+				arrow
+			>
+				<span>
+					<IconButton
+						size='small'
+						disabled={!canDecrease || row.onPowerLevelDecrease === undefined}
+						aria-label={`Decrease power level for ${row.itemName}`}
+						onClick={row.onPowerLevelDecrease}
+						sx={{
+							p: 0.4,
+							color: canDecrease ? 'primary.main' : 'text.disabled',
+						}}
+					>
+						<RemoveIcon sx={{ fontSize: 16 }} />
+					</IconButton>
+				</span>
+			</Tooltip>
+			<Typography
+				aria-label={`Power level for ${row.itemName}`}
+				sx={{
+					color: 'text.primary',
 					fontSize: 12,
-					'& fieldset': {
-						borderColor: theme.palette.divider,
-						boxSizing: 'border-box',
-					},
-					'&.Mui-focused fieldset': { borderWidth: 1 },
-					'&:hover:not(.Mui-focused) fieldset': {
-						borderColor: theme.palette.divider,
-					},
-				},
-				'& .MuiInputBase-input': {
-					boxSizing: 'border-box',
-					height: '100%',
-					padding: '0 8px',
+					fontVariantNumeric: 'tabular-nums',
+					minWidth: 18,
 					textAlign: 'center',
-				},
-			})}
-		/>
+				}}
+			>
+				{powerLevel}
+			</Typography>
+			<Tooltip
+				title={
+					canIncrease
+						? `Ascend ${row.itemName} to power level ${powerLevel + 1}`
+						: `${row.itemName} cannot be ascended higher`
+				}
+				arrow
+			>
+				<span>
+					<IconButton
+						size='small'
+						disabled={!canIncrease || row.onPowerLevelIncrease === undefined}
+						aria-label={`Ascend ${row.itemName} to power level ${powerLevel + 1}`}
+						onClick={row.onPowerLevelIncrease}
+						sx={{
+							p: 0.4,
+							color: canIncrease ? 'primary.main' : 'text.disabled',
+						}}
+					>
+						<AddIcon sx={{ fontSize: 16 }} />
+					</IconButton>
+				</span>
+			</Tooltip>
+		</Stack>
 	)
 }
 
@@ -312,9 +523,9 @@ const columns: GridColDef<InventoryGridRow>[] = [
 	},
 	{
 		field: 'value',
-		headerName: 'QUANTITY',
-		width: 190,
-		minWidth: 120,
+		headerName: 'QUANTITY / DURABILITY',
+		width: 235,
+		minWidth: 180,
 		display: 'flex',
 		resizable: true,
 		sortable: false,
@@ -349,7 +560,7 @@ const columns: GridColDef<InventoryGridRow>[] = [
 				<IconButton
 					color='error'
 					size='small'
-					aria-label={`Remove ${row.itemName} from slot ${row.slot}`}
+					aria-label={`Remove ${row.itemName} from slot ${row.slotLabel}`}
 					onClick={row.onRemove}
 					sx={{ fontSize: 18 }}
 				>
@@ -377,7 +588,7 @@ function NoRowsOverlay() {
 
 export function InventoryTable({
 	entries,
-	slotCount,
+	slotRange,
 	onUpdateItem,
 	onRemoveItem,
 	onMoveItem,
@@ -386,8 +597,19 @@ export function InventoryTable({
 	allowRemove = true,
 	allowReorder = true,
 }: InventoryTableProps) {
+	const [slotRangeStart, slotRangeEnd] = slotRange
 	const [draftValues, setDraftValues] = useState<Record<string, string>>({})
-	const [selectedDragSlot, setSelectedDragSlot] = useState<string | null>(null)
+	// Durability restored by the "revert" button, keyed by slot. Only populated
+	// after the user repairs an item; cleared once they revert (or the view
+	// changes and the table remounts).
+		const [durabilityUndo, setDurabilityUndo] = useState<
+			Record<string, number | null>
+		>({})
+	// Count restored by the "revert" button, keyed by slot. Only populated
+	// after the user maxes a stack; cleared once they revert (or the view
+	// changes and the table remounts).
+	const [countUndo, setCountUndo] = useState<Record<string, number | null>>({})
+		const [selectedDragSlot, setSelectedDragSlot] = useState<string | null>(null)
 	const dropIndicatorRef = useRef<HTMLDivElement>(null)
 	const dragSourceRef = useRef<string | null>(null)
 	const dropTargetRef = useRef<{
@@ -403,18 +625,36 @@ export function InventoryTable({
 
 	const occupiedRows = entries.map(([slot, item]): InventoryGridRow => {
 		const countDraftKey = `${slot}:Count`
-		const durabilityDraftKey = `${slot}:Durability`
-		const powerLevelDraftKey = `${slot}:PowerLevel`
 		const itemName = getItemName(item.ItemData)
-		const field = loadoutMode
-			? null
-			: getItemMaxStack(item.ItemData, item) === 1
-				? null
-				: Object.hasOwn(draftValues, countDraftKey)
-					? 'Count'
-					: Object.hasOwn(draftValues, durabilityDraftKey)
-						? 'Durability'
-						: getEditableField(item)
+		const hasCount = typeof item.Count === 'number'
+		const maxStack = getItemMaxStack(item.ItemData, item)
+		// Stackable items get an editable Count field. Durability is shown
+		// read-only and repaired with the buttons instead of being typed in.
+		const field: EditableItemField | null =
+			hasCount && !loadoutMode && maxStack !== 1 ? 'Count' : null
+		// Stack limit shown after the editable count ("count / max"), mirroring
+		// the durability display. Unknown limits stay hidden.
+		const countMax =
+			field === 'Count' && typeof maxStack === 'number' && maxStack > 1
+				? maxStack
+				: null
+		const storedDurability =
+			typeof item.Durability === 'number' ? item.Durability : null
+		const rawDurabilityMax = getItemData(item.ItemData)?.durability
+		const durabilityMax =
+			typeof rawDurabilityMax === 'number' && rawDurabilityMax > 0
+				? rawDurabilityMax
+				: null
+		// Saves omit Durability while an item is at full durability, so treat a
+		// missing value as full whenever the item has a known maximum.
+		const currentDurability = storedDurability ?? durabilityMax
+		const canRepairDurability =
+			storedDurability !== null &&
+			durabilityMax !== null &&
+			storedDurability !== durabilityMax
+		const currentCount = typeof item.Count === 'number' ? item.Count : null
+		const canMaxCount =
+			countMax !== null && currentCount !== null && currentCount < countMax
 		const itemIcon = getItemIcon(item.ItemData)
 		const basePowerLevel = getItemBasePowerLevel(item.ItemData) ?? null
 		const canUpgradePowerLevel = canUpgradeItemPowerLevel(item.ItemData)
@@ -430,10 +670,28 @@ export function InventoryTable({
 				? Math.max(basePowerLevel, calculatedPowerLevel)
 				: basePowerLevel
 		}
+		// Downgrading stops at the item's base power level, upgrading at the
+		// highest power level the game lets you ascend to. Items that cannot be
+		// ascended get neither button.
+		const nextPowerLevelDown =
+			canUpgradePowerLevel &&
+			powerLevel !== null &&
+			basePowerLevel !== null &&
+			powerLevel > basePowerLevel
+				? powerLevel - 1
+				: null
+		const nextPowerLevelUp =
+			canUpgradePowerLevel &&
+			powerLevel !== null &&
+			powerLevel < MAX_POWER_LEVEL
+				? powerLevel + 1
+				: null
 
 		return {
 			id: slot,
 			slot,
+			slotLabel: getSlotLabel(slot, slotRangeStart),
+			itemId: item.ItemData,
 			itemName: itemName ?? item.ItemData,
 			itemIcon,
 			isKnownItem: itemName !== undefined,
@@ -441,12 +699,37 @@ export function InventoryTable({
 			loadoutMode,
 			canDrag: allowReorder,
 			field,
+			countMax,
+			canMaxCount,
+			onMaxCount:
+				countMax !== null && canMaxCount
+					? () => {
+							setCountUndo((current) => ({
+								...current,
+								[slot]: currentCount,
+							}))
+							onUpdateItem(slot, 'Count', countMax)
+						}
+					: undefined,
+			onRevertCount: Object.hasOwn(countUndo, slot)
+				? () => {
+						const previous = countUndo[slot]
+						setCountUndo((current) => {
+							const next = { ...current }
+							delete next[slot]
+							return next
+						})
+						onUpdateItem(slot, 'Count', previous ?? null)
+					}
+				: undefined,
+			durability: currentDurability,
+			durabilityMax,
+			canRepairDurability,
 			basePowerLevel,
 			canUpgradePowerLevel,
-			powerLevelValue:
-				powerLevel === null
-					? null
-					: (draftValues[powerLevelDraftKey] ?? powerLevel.toString()),
+			powerLevel,
+			canDecreasePowerLevel: nextPowerLevelDown !== null,
+			canIncreasePowerLevel: nextPowerLevelUp !== null,
 			onSelectForDrag: allowReorder
 				? () => setSelectedDragSlot(slot)
 				: undefined,
@@ -491,39 +774,61 @@ export function InventoryTable({
 					return next
 				})
 			},
-			onPowerLevelChange: (inputValue) => {
-				if (!canUpgradePowerLevel) return
-				setDraftValues((current) => ({
-					...current,
-					[powerLevelDraftKey]: inputValue,
-				}))
-			},
-			onPowerLevelBlur: (inputValue) => {
-				if (canUpgradePowerLevel && basePowerLevel !== null) {
-					const requestedPowerLevel = Number(inputValue)
-					const nextPowerLevel = Number.isSafeInteger(requestedPowerLevel)
-						? Math.max(basePowerLevel, requestedPowerLevel)
-						: basePowerLevel
-					if (nextPowerLevel !== powerLevel) {
-						onUpdateItem(
-							slot,
-							'NumUpgradesApplied',
-							nextPowerLevel - basePowerLevel,
-						)
+			onPowerLevelDecrease:
+				nextPowerLevelDown !== null && basePowerLevel !== null
+					? () =>
+							onUpdateItem(
+								slot,
+								'NumUpgradesApplied',
+								nextPowerLevelDown - basePowerLevel,
+							)
+					: undefined,
+			onPowerLevelIncrease:
+				nextPowerLevelUp !== null && basePowerLevel !== null
+					? () =>
+							onUpdateItem(
+								slot,
+								'NumUpgradesApplied',
+								nextPowerLevelUp - basePowerLevel,
+							)
+					: undefined,
+			onRepairDurability:
+				canRepairDurability && durabilityMax !== null
+					? () => {
+							setDurabilityUndo((current) => ({
+								...current,
+								[slot]: currentDurability,
+							}))
+							onUpdateItem(slot, 'Durability', durabilityMax)
+						}
+					: undefined,
+			onRevertDurability: Object.hasOwn(durabilityUndo, slot)
+				? () => {
+						const previous = durabilityUndo[slot]
+						setDurabilityUndo((current) => {
+							const next = { ...current }
+							delete next[slot]
+							return next
+						})
+						onUpdateItem(slot, 'Durability', previous ?? null)
 					}
-				}
-				setDraftValues((current) => {
-					const next = { ...current }
-					delete next[powerLevelDraftKey]
-					return next
-				})
-			},
+				: undefined,
 			onRemove: () => {
 				setDraftValues((current) => {
 					const next = { ...current }
 					delete next[countDraftKey]
-					delete next[durabilityDraftKey]
-					delete next[powerLevelDraftKey]
+					return next
+				})
+				setDurabilityUndo((current) => {
+					if (!Object.hasOwn(current, slot)) return current
+					const next = { ...current }
+					delete next[slot]
+					return next
+				})
+				setCountUndo((current) => {
+					if (!Object.hasOwn(current, slot)) return current
+					const next = { ...current }
+					delete next[slot]
 					return next
 				})
 				onRemoveItem?.(slot)
@@ -531,27 +836,95 @@ export function InventoryTable({
 		}
 	})
 	const occupiedSlots = new Set(occupiedRows.map((row) => row.slot))
+	// Only slots inside the current tab's range become empty rows, so the
+	// toggle never lists slots that belong to another tab.
 	const emptyRows: InventoryGridRow[] = Array.from(
-		{ length: slotCount },
-		(_, slot) => String(slot),
+		{ length: Math.max(0, slotRangeEnd - slotRangeStart) },
+		(_, index) => String(slotRangeStart + index),
 	)
 		.filter((slot) => !occupiedSlots.has(slot))
 		.map((slot) => ({
 			id: slot,
 			slot,
+			slotLabel: getSlotLabel(slot, slotRangeStart),
+			itemId: null,
 			itemName: '',
 			itemIcon: undefined,
 			isKnownItem: true,
 			isEmpty: true,
 			field: null,
 			value: null,
+			durability: null,
+			durabilityMax: null,
+			countMax: null,
+			canRepairDurability: false,
 			basePowerLevel: null,
-			powerLevelValue: null,
+			powerLevel: null,
 			canUpgradePowerLevel: false,
 		}))
 	const rows = [...occupiedRows, ...(showEmptySlots ? emptyRows : [])].sort(
 		(left, right) => Number(left.slot) - Number(right.slot),
 	)
+	useEffect(() => {
+		const entriesToClear: string[] = []
+		Object.entries(durabilityUndo).forEach(([slot, previous]) => {
+			const item = entries.find(([s]) => s === slot)?.[1]
+			if (!item) {
+				entriesToClear.push(slot)
+				return
+			}
+			const currentDurability =
+				typeof item.Durability === 'number' ? item.Durability : null
+			const rawMax = getItemData(item.ItemData)?.durability
+			const maxDurability =
+				typeof rawMax === 'number' && rawMax > 0 ? rawMax : null
+			if (maxDurability !== null && currentDurability === maxDurability) {
+				entriesToClear.push(slot)
+				return
+			}
+			if (previous !== null && currentDurability === previous) {
+				entriesToClear.push(slot)
+				return
+			}
+			if (currentDurability === null) {
+				entriesToClear.push(slot)
+			}
+		})
+		if (entriesToClear.length === 0) return
+		setDurabilityUndo((current) => {
+			const next = { ...current }
+			for (const slot of entriesToClear) {
+				delete next[slot]
+			}
+			return next
+		})
+	}, [entries, durabilityUndo])
+	useEffect(() => {
+		const entriesToClear: string[] = []
+		Object.entries(countUndo).forEach(([slot]) => {
+			const item = entries.find(([s]) => s === slot)?.[1]
+			if (!item) {
+				entriesToClear.push(slot)
+				return
+			}
+			const currentCount = typeof item.Count === 'number' ? item.Count : null
+			// The revert only makes sense while the stack is still maxed; once
+			// it drops off the max (reverted elsewhere or changed by the user)
+			// there is nothing to undo.
+			const maxStack = getItemMaxStack(item.ItemData, item)
+			if (maxStack === null || currentCount !== maxStack) {
+				entriesToClear.push(slot)
+			}
+		})
+		if (entriesToClear.length === 0) return
+		setCountUndo((current) => {
+			const next = { ...current }
+			for (const slot of entriesToClear) {
+				delete next[slot]
+			}
+			return next
+		})
+	}, [entries, countUndo])
 	const clearDragSource = () => {
 		dragSourceRef.current = null
 	}
@@ -623,6 +996,16 @@ export function InventoryTable({
 					border: 0,
 					borderRadius: 0,
 				},
+				// MUI outlines the focused cell and column header using
+				// colors.interactive.focus (derived from palette.primary). Those
+				// rules are scoped under the grid root with :focus/:focus-within
+				// states, so the plain .MuiDataGrid-cell overrides above lose to
+				// them; matching their scope and state wins on specificity
+				// without relying on injection order or !important.
+				'& .MuiDataGrid-root .MuiDataGrid-cell:focus, & .MuiDataGrid-root .MuiDataGrid-cell:focus-within, & .MuiDataGrid-root .MuiDataGrid-columnHeader:focus, & .MuiDataGrid-root .MuiDataGrid-columnHeader:focus-within':
+					{
+						outline: 'none',
+					},
 				'& .MuiDataGrid-columnHeaders': {
 					bgcolor: theme.palette.surfaceHeader,
 					color: theme.palette.text.secondary,
@@ -659,14 +1042,14 @@ export function InventoryTable({
 				'& .MuiDataGrid-row': {
 					bgcolor: theme.palette.background.paper,
 				},
-				'& .MuiDataGrid-row:hover': {
-					bgcolor: `${theme.palette.surfaceRaised} !important`,
+				'& .MuiDataGrid-row:hover:not(.drag-source-selected)': {
+					bgcolor: theme.palette.surfaceRaised,
 				},
 				'& .MuiDataGrid-row.drag-source-selected': {
-					position: 'relative',
-					zIndex: 1,
-					outline: `2px solid ${theme.palette.primary.main}`,
-					outlineOffset: '-2px',
+					bgcolor: theme.palette.surfaceSelected,
+				},
+				'& .MuiDataGrid-row.drag-source-selected:hover': {
+					bgcolor: theme.palette.surfaceSelected,
 				},
 				'& .MuiDataGrid-virtualScroller': {
 					bgcolor: theme.palette.background.paper,
@@ -696,7 +1079,7 @@ export function InventoryTable({
 				rows={rows}
 				columns={columns}
 				columnVisibilityModel={{
-					value: !loadoutMode,
+					value: true,
 					remove: allowRemove,
 				}}
 				getRowClassName={({ id }) =>

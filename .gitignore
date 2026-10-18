@@ -1,6 +1,7 @@
 node_modules
 dist
 out
+.cache
 .DS_Store
 *.log*
 src/renderer/src/features/inventory/assets/

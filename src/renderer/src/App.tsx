@@ -12,8 +12,7 @@ export const App = () => {
 	const selectedSave = editor.saves.find(
 		(save) => save.fileName === editor.selectedFile,
 	)
-	const [inventoryView, setInventoryView] =
-		useState<InventoryView>('personal-chest')
+	const [inventoryView, setInventoryView] = useState<InventoryView>('inventory')
 
 	return (
 		<Box
@@ -75,6 +74,7 @@ export const App = () => {
 						onUpdateInventoryItem={editor.updatePlayerInventoryItem}
 						onUpdateLoadoutItem={editor.updateLoadoutItem}
 						onAddItem={editor.addItem}
+						onAddInventoryItem={editor.addInventoryItem}
 						onRemoveItem={editor.removeItem}
 						onRemoveInventoryItem={editor.removePlayerInventoryItem}
 						onMoveItem={editor.moveItem}
