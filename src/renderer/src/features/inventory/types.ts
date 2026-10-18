@@ -11,7 +11,7 @@ export type InventoryEntry = [slot: string, item: InventoryItem]
 export type PersonalChestItem = InventoryItem
 export type PersonalChestEntry = InventoryEntry
 export type EditableItemField = 'Count' | 'Durability' | 'NumUpgradesApplied'
-export type InventoryView = 'personal-chest' | 'inventory'
+export type InventoryView = 'personal-chest' | 'inventory' | 'ui'
 export type InventoryCategory =
 	| 'quick-access'
 	| 'items'

@@ -16,6 +16,7 @@ import {
 	canUpgradeItemPowerLevel,
 	getItemBasePowerLevel,
 } from './itemPowerLevels'
+import { MissingItemImage } from './MissingItemImage'
 import type { EditableItemField, InventoryEntry } from './types'
 
 interface InventoryTableProps {
@@ -138,27 +139,28 @@ function renderItemCell(row: InventoryGridRow) {
 				width: '100%',
 			}}
 		>
-			{row.itemIcon && (
-				<Box
-					component='img'
-					src={row.itemIcon}
-					alt=''
-					aria-hidden='true'
-					sx={{
-						width: 30,
-						height: 30,
-						objectFit: 'contain',
-						flexShrink: 0,
-					}}
-				/>
-			)}
+			{!row.isEmpty &&
+				(row.itemIcon ? (
+					<Box
+						component='img'
+						src={row.itemIcon}
+						alt=''
+						aria-hidden='true'
+						sx={{
+							width: 30,
+							height: 30,
+							objectFit: 'contain',
+							flexShrink: 0,
+						}}
+					/>
+				) : (
+					<MissingItemImage size={30} />
+				))}
 			<Typography
 				sx={(theme) => ({
 					flex: 1,
 					minWidth: 0,
-					color: row.isEmpty
-						? theme.palette.textSubtle
-						: theme.palette.textItem,
+					color: row.isEmpty ? theme.palette.textSubtle : theme.palette.textItem,
 					fontFamily: row.isKnownItem ? 'inherit' : 'Consolas, monospace',
 					fontSize: 11,
 					fontStyle: row.isEmpty ? 'italic' : 'normal',

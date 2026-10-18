@@ -13,12 +13,15 @@ import {
 	Tab,
 	Tabs,
 	TextField,
+	Tooltip,
 	Typography,
 } from '@mui/material'
 import { useMemo, useState } from 'react'
 import { InventoryTable } from './InventoryTable'
+import { InventoryUiPreview } from './InventoryUiPreview'
 import { getItemIcon } from './itemIcons'
 import { getItemName, getKnownItems } from './itemNames'
+import { MissingItemImage } from './MissingItemImage'
 import {
 	getInventoryEntries,
 	getLoadout,
@@ -94,13 +97,42 @@ function filterInventoryEntries(
 	)
 }
 
+const QUICK_ACCESS_ITEM_COUNT = 8
+const INVENTORY_SLOT_COUNT = 8 * 4
+const ITEMS_START = QUICK_ACCESS_ITEM_COUNT
+const RUNES_START = ITEMS_START + INVENTORY_SLOT_COUNT
+const ARROWS_START = RUNES_START + INVENTORY_SLOT_COUNT
+const QUEST_ITEMS_START = ARROWS_START + INVENTORY_SLOT_COUNT
+
 function getInventoryCategory(slot: string, itemId: string): InventoryCategory {
 	const slotIndex = Number(slot)
 	if (Number.isSafeInteger(slotIndex)) {
-		if (slotIndex >= 0 && slotIndex <= 7) return 'quick-access'
-		if (slotIndex >= 8 && slotIndex <= 39) return 'items'
-		if (slotIndex >= 72 && slotIndex <= 103) return 'arrows'
-		if (slotIndex >= 104 && slotIndex <= 135) return 'quest-items'
+		if (slotIndex >= 0 && slotIndex < QUICK_ACCESS_ITEM_COUNT)
+			return 'quick-access'
+		if (
+			slotIndex >= ITEMS_START &&
+			slotIndex < ITEMS_START + INVENTORY_SLOT_COUNT
+		) {
+			return 'items'
+		}
+		if (
+			slotIndex >= RUNES_START &&
+			slotIndex < RUNES_START + INVENTORY_SLOT_COUNT
+		) {
+			return 'runes'
+		}
+		if (
+			slotIndex >= ARROWS_START &&
+			slotIndex < ARROWS_START + INVENTORY_SLOT_COUNT
+		) {
+			return 'arrows'
+		}
+		if (
+			slotIndex >= QUEST_ITEMS_START &&
+			slotIndex < QUEST_ITEMS_START + INVENTORY_SLOT_COUNT
+		) {
+			return 'quest-items'
+		}
 	}
 
 	const name = getItemName(itemId)
@@ -288,11 +320,12 @@ export function InventoryWorkspace({
 				<Tabs
 					value={view}
 					onChange={(_, nextView: InventoryView) => onViewChange(nextView)}
-					aria-label='Inventory views'
+					aria-label='Workspace views'
 					sx={{ mb: 2 }}
 				>
 					<Tab value='personal-chest' label='Personal Chest' />
 					<Tab value='inventory' label='Inventory' />
+					<Tab value='ui' label='UI' />
 				</Tabs>
 				{view === 'inventory' && (
 					<Tabs
@@ -308,11 +341,13 @@ export function InventoryWorkspace({
 						<Tab value='runes' label='Runes' />
 						<Tab value='arrows' label='Arrows' />
 						<Tab value='quest-items' label='Quest Items' />
-						<Tab value='loadout' label='Loadout' />
+						<Tab value='loadout' label='Armour' />
 					</Tabs>
 				)}
 
-				{!selectedFile && !loadingFile ? (
+				{view === 'ui' ? (
+					<InventoryUiPreview saveData={saveData} />
+				) : !selectedFile && !loadingFile ? (
 					<EmptyCharacterState />
 				) : loadingFile ? (
 					<Box sx={{ display: 'grid', placeItems: 'center', py: 10 }}>
@@ -430,36 +465,45 @@ export function InventoryWorkspace({
 									</Box>
 									{filteredKnownItems.length ? (
 										filteredKnownItems.map((item) => (
-											<MenuItem
+											<Tooltip
 												key={item.id}
-												onClick={() => {
-													onAddItem(item.id)
-													setAddMenuAnchor(null)
-													setAddItemSearch('')
-												}}
+												title={item.name}
+												arrow
+												placement='right'
+												enterDelay={500}
 											>
-												<Stack
-													direction='row'
-													spacing={1}
-													sx={{ alignItems: 'center' }}
+												<MenuItem
+													onClick={() => {
+														onAddItem(item.id)
+														setAddMenuAnchor(null)
+														setAddItemSearch('')
+													}}
 												>
-													{getItemIcon(item.id) && (
-														<Box
-															component='img'
-															src={getItemIcon(item.id)}
-															alt=''
-															aria-hidden='true'
-															sx={{
-																width: 24,
-																height: 24,
-																objectFit: 'contain',
-																flexShrink: 0,
-															}}
-														/>
-													)}
-													{item.name}
-												</Stack>
-											</MenuItem>
+													<Stack
+														direction='row'
+														spacing={1}
+														sx={{ alignItems: 'center' }}
+													>
+														{getItemIcon(item.id) ? (
+															<Box
+																component='img'
+																src={getItemIcon(item.id)}
+																alt=''
+																aria-hidden='true'
+																sx={{
+																	width: 24,
+																	height: 24,
+																	objectFit: 'contain',
+																	flexShrink: 0,
+																}}
+															/>
+														) : (
+															<MissingItemImage size={24} />
+														)}
+														{item.name}
+													</Stack>
+												</MenuItem>
+											</Tooltip>
 										))
 									) : (
 										<MenuItem disabled>No matching items</MenuItem>

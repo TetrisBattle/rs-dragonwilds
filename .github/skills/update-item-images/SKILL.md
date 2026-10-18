@@ -1,6 +1,6 @@
 ---
 name: update-item-images
-description: "Use when adding or updating personal chest item images from C:\\Users\\thien\\Downloads\\rsdragonwilds assets, mapping inventory icons, or organizing game item assets in this project."
+description: "Use when adding or updating inventory item images from the user's downloads or the authorized RuneScape: Dragonwilds Wiki, mapping item icons, or organizing game item assets in this project."
 ---
 
 # Update Item Images
@@ -20,7 +20,9 @@ Use the user's downloaded item images to update the inventory icons in this proj
 - Arrow images belong in `src/renderer/src/features/inventory/assets/gear/arrows`.
 - Resource images, including Stone, belong in `src/renderer/src/features/inventory/assets/resources`.
 - Preserve the original image format (`.png` or `.webp`) and copy files into the project; do not move or delete the user's source files.
-- Do not download images from the wiki or game. Use files already present in the source folder.
+- The user has confirmed that the RuneScape: Dragonwilds Wiki images can be used in this personal project. For bulk image imports, use the wiki's MediaWiki API via `npm run import:item-images`; do not scrape HTML pages or guess image URLs.
+- The importer must match exact item page titles to known item names, keep downloaded images bundled locally, and preserve the source image format. Retain source-page and image URLs in the generated provenance JSON.
+- Use a descriptive User-Agent and bounded request concurrency when accessing the wiki API. Do not request more data than needed.
 
 ## Naming convention
 
@@ -46,6 +48,7 @@ Use lowercase kebab-case for asset filenames, including the extension:
 4. If the image name matches an existing friendly item name but its persistence ID is not available, do not create a guessed mapping. Leave it unmapped and ask the user for an item ID or a save entry containing that item.
 5. Keep icons bundled locally with the app; do not use remote image URLs.
 6. Do not alter unrelated save-editing behavior or remove existing user assets.
+7. For a bulk wiki import, update the generated wiki icon map and provenance using the importer. Never map a non-exact page-title match to an item ID.
 
 ## Verification
 
